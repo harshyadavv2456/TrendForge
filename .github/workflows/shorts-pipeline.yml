@@ -63,7 +63,7 @@ jobs:
         if: steps.preflight.outputs.ready == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
           ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
 
       - name: Install Python dependencies
@@ -71,6 +71,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Cache Piper neural voice model
+        if: steps.preflight.outputs.ready == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/piper
+          key: trendforge-piper-${{ vars.LOCAL_TTS_VOICE || 'en_US-lessac-medium' }}-v1
 
       - name: Run unit tests and credential-free checks
         if: steps.preflight.outputs.ready == 'true'
@@ -95,7 +102,7 @@ jobs:
           HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '21' }}
           MAX_SOURCE_AGE_DAYS: ${{ vars.MAX_SOURCE_AGE_DAYS || '14' }}
           GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
-          LOCAL_TTS_VOICE: ${{ vars.LOCAL_TTS_VOICE || 'en-us+m3' }}
+          LOCAL_TTS_VOICE: ${{ vars.LOCAL_TTS_VOICE || 'en_US-lessac-medium' }}
           MIN_SCRIPT_QUALITY: ${{ vars.MIN_SCRIPT_QUALITY || '70' }}
           YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
           YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
