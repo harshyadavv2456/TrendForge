@@ -50,11 +50,11 @@ Under **Settings → Secrets and variables → Actions → Variables**, add:
 
 | Variable | First-run value | Production suggestion |
 | --- | --- | --- |
-| AUTO_PUBLISH | false | true, after validating a preview |
+| AUTO_PUBLISH | true | true for unattended publishing; set false only to pause uploads and generate previews |
 | MAX_UPLOADS_PER_DAY | 2 | 1–2 to start |
 | MAX_SEARCHES_PER_RUN | 4 | 4 |
 | YOUTUBE_REGIONS | US, GB, CA, AU | Same |
-| VIDEO_PRIVACY_STATUS | private | public after verifying upload behavior |
+| VIDEO_PRIVACY_STATUS | public | public only after authorizing this channel for public uploads |
 
 Other supported variables are listed in CONFIGURATION.md. If an optional variable is absent, the workflow uses its default.
 
