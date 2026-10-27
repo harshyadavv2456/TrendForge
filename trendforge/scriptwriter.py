@@ -40,7 +40,18 @@ def _word_count(value: str) -> int:
 def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, Any]:
     if not settings.openai_api_key:
         raise ScriptGenerationError("OPENAI_API_KEY is required to generate original scripts.")
-    source = candidate_summary(candidate)
+    full_source = candidate_summary(candidate)
+    # Keep the model prompt to the minimum facts needed for an original angle; raw counts
+    # and creator descriptions are not sent to the external generation provider.
+    source = {
+        "video_id": full_source["video_id"],
+        "title": full_source["title"],
+        "creator": full_source["creator"],
+        "url": full_source["url"],
+        "published_at": full_source.get("published_at"),
+        "discovery": full_source.get("discovery", {}),
+        "category_id": full_source.get("category_id", ""),
+    }
     prompt = {
         "source_observations": source,
         "objective": (
