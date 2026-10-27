@@ -170,7 +170,7 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
     source_url = source["url"]
     if source_url not in description:
         description = f"{description}\n\nSource video and public metadata: {source_url}"
-    description += "\n\nOriginal commentary and custom motion graphics. AI-assisted narration/production. #Shorts " + " ".join(hashtags[:4])
+    description += "\n\nOriginal commentary and custom motion graphics. AI-assisted narration/production.\n" + " ".join(hashtags[:4])
     description = description[:4800]
     return {
         "title": title,
