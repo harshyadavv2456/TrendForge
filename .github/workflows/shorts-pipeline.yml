@@ -114,6 +114,8 @@ jobs:
           git add data/state.json
           if ! git diff --cached --quiet; then
             git commit -m "chore: update TrendForge trend history [skip ci]"
+            git fetch origin main
+            git rebase origin/main
             AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
             git -c http.extraheader="AUTHORIZATION: basic $AUTH" push origin "HEAD:main"
           else
