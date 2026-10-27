@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
-from trendforge.scoring import score_video
+from trendforge.scoring import annotate_discovery
 from trendforge.youtube import candidate_summary
 
 
@@ -15,29 +15,34 @@ def sample_video(published_at: str) -> dict:
             "description": "Public metadata description",
         },
         "statistics": {"viewCount": "1200000", "likeCount": "25000", "commentCount": "1300"},
-        "regions": ["US", "GB"],
     }
 
 
-def test_score_is_bounded_and_has_velocity() -> None:
+def test_discovery_provenance_preserves_native_order() -> None:
     now = datetime(2026, 10, 27, tzinfo=timezone.utc)
-    video = score_video(sample_video((now - timedelta(hours=4)).isoformat()), now=now)
-    assert 0 <= video["trend"]["score"] <= 100
-    assert video["trend"]["views_per_hour_estimate"] > 0
-    assert video["trend"]["age_hours"] >= 3.9
+    video = annotate_discovery(
+        sample_video(now.isoformat()),
+        source_kind="popular_chart",
+        source_label="YouTube mostPopular chart · US",
+        source_rank=2,
+        region="US",
+    )
+    assert video["discovery"]["source_kind"] == "popular_chart"
+    assert video["discovery"]["source_rank"] == 2
+    assert video["discovery"]["region"] == "US"
 
 
-def test_known_view_growth_uses_previous_snapshot() -> None:
-    now = datetime(2026, 10, 27, tzinfo=timezone.utc)
-    previous = {"view_count": 1000, "last_seen": (now - timedelta(hours=2)).isoformat()}
-    video = score_video(sample_video((now - timedelta(days=2)).isoformat()), previous, now)
-    assert video["trend"]["views_per_hour_estimate"] >= 99_000
-
-
-def test_candidate_summary_links_source_and_has_score() -> None:
+def test_candidate_summary_uses_raw_api_values_without_custom_metrics() -> None:
     now = datetime.now(timezone.utc)
-    video = score_video(sample_video(now.isoformat()), now=now)
+    video = annotate_discovery(
+        sample_video(now.isoformat()),
+        source_kind="creator_latest",
+        source_label="Latest uploads from Example Creator (@ExampleCreator)",
+        source_rank=1,
+    )
     summary = candidate_summary(video)
     assert summary["url"] == "https://www.youtube.com/watch?v=abc123"
     assert summary["creator"] == "Example Creator"
-    assert isinstance(summary["trend_score"], float)
+    assert summary["views"] == 1_200_000
+    assert summary["discovery"]["source_kind"] == "creator_latest"
+    assert "trend_score" not in summary
