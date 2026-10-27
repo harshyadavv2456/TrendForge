@@ -20,22 +20,27 @@ def render_report(
         "",
         message,
         "",
-        "## Highest-ranked opportunities",
+        "## Current candidates (YouTube's native chart/search ordering)",
         "",
-        "| Score | Commercial fit* | Creator | Video | Estimated views/hour | Regions |",
-        "|---:|---:|---|---|---:|---|",
+        "| Source order | Region | Creator | Video | Public views | Published (UTC) |",
+        "|---|---|---|---|---:|---|",
     ]
     for item in candidates[:12]:
         snippet = item.get("snippet", {})
         stats = item.get("statistics", {})
-        trend = item.get("trend", {})
+        discovery = item.get("discovery", {})
         title = str(snippet.get("title", "Untitled")).replace("|", "\\|").replace("[", "\\[").replace("]", "\\]")
         creator = str(snippet.get("channelTitle", "Unknown")).replace("|", "\\|")
+        source_label = str(discovery.get("source_label", "YouTube search")).replace("|", "\\|")
+        rank = int(discovery.get("source_rank", 0) or 0)
+        source = f"{source_label} (position {rank})" if rank else source_label
+        region = str(discovery.get("region") or "—")
         video_id = str(item.get("id", ""))
         url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
+        views = int(stats.get("viewCount", 0) or 0)
+        published = str(snippet.get("publishedAt", "—"))[:19].replace("T", " ")
         lines.append(
-            f"| {float(trend.get('score', 0)):.1f} | {float(trend.get('commercial_fit_proxy', 0)):.0f}/100 | {creator} | [{title}]({url}) | "
-            f"{float(trend.get('views_per_hour_estimate', 0)):,.0f} | {', '.join(item.get('regions', []))} |"
+            f"| {source} | {region} | {creator} | [{title}]({url}) | {views:,} | {published} |"
         )
     if not candidates:
         lines.append("| — | — | — | No candidates returned | — | — |")
@@ -57,7 +62,7 @@ def render_report(
     lines.extend([
         "",
         "---",
-        "*Commercial fit is a title/category heuristic, not actual earnings or CPM/RPM. Trend scores are not forecasts of views or revenue. Source footage is not downloaded or reused.",
+        "Public view counts are shown as returned by YouTube. TrendForge does not calculate custom cross-channel trend scores or infer creator revenue. Source footage is not downloaded or reused.",
     ])
     return "\n".join(lines) + "\n"
 
