@@ -100,6 +100,21 @@ jobs:
           pip install pytest
           pytest -q tests/test_clipper.py
 
+      - name: End-to-end smoke test with a temporary source video
+        run: |
+          ffmpeg -hide_banner -loglevel error -y \
+            -f lavfi -i "testsrc2=duration=23:size=640x360:rate=12" \
+            -f lavfi -i "sine=frequency=500:duration=23" \
+            -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/trendforge-clipper-smoke-source.mp4
+          python -m trendforge.clipper \
+            --input /tmp/trendforge-clipper-smoke-source.mp4 \
+            --source-url "https://www.youtube.com/watch?v=fixture123456" \
+            --title "Temporary clipper smoke-test footage" \
+            --creator "TrendForge CI fixture" \
+            --rights-confirmed --count 1 --seconds 15 --output outputs/clipper-smoke
+          ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 outputs/clipper-smoke/clip-01.mp4 | grep -qx '1080,1920'
+          ffprobe -v error -show_entries format=duration -of csv=p=0 outputs/clipper-smoke/clip-01.mp4 | awk '{ if ($1 < 12 || $1 > 17) exit 1 }'
+
       - name: Analyse source footage and render actual clips
         env:
           SOURCE_MEDIA_URL: ${{ inputs.source_media_url }}
