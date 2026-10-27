@@ -76,7 +76,7 @@ def main() -> int:
         "title": "Why Strong Shorts Open a Curiosity Loop",
         "angle": "A four-part storytelling structure that gives a short a clear promise and a real payoff.",
         "quality_score": 100,
-        "narration_disclosure": "Illustrative demo script; local eSpeak NG synthetic narration.",
+        "narration_disclosure": "Illustrative demo script; local Piper neural synthetic narration.",
         "scenes": scenes,
         "tags": ["short form storytelling", "video structure", "creator tips"],
         "hashtags": ["#Shorts", "#Storytelling", "#CreatorTips"],
@@ -110,7 +110,7 @@ def main() -> int:
         raise SystemExit(f"Invalid demo video duration/size: {duration}s / {size_bytes} bytes")
     print(f"Demo created: {target.relative_to(ROOT)}")
     print(f"Resolution: {video['width']}x{video['height']}; duration: {duration:.1f}s; size: {size_bytes:,} bytes")
-    print("Network APIs used: none. Narration: local eSpeak NG.")
+    print("Paid/AI provider APIs used: none. Narration: local Piper neural TTS.")
     return 0
 
 
