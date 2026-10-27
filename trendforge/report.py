@@ -38,7 +38,7 @@ def render_report(
             f"{float(trend.get('views_per_hour_estimate', 0)):,.0f} | {', '.join(item.get('regions', []))} |"
         )
     if not candidates:
-        lines.append("| — | — | No candidates returned | — | — |")
+        lines.append("| — | — | — | No candidates returned | — | — |")
     if uploaded:
         lines.extend([
             "",
