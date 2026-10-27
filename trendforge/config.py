@@ -45,10 +45,12 @@ class Settings:
     min_trend_score: float
     max_candidates: int
     max_searches_per_run: int
+    max_creator_channels_per_run: int
     history_retention_days: int
     min_script_quality: int
     regions: list[str]
     search_queries: list[str]
+    creator_handles: list[str]
     openai_model: str
     tts_model: str
     tts_voice: str
@@ -67,8 +69,12 @@ class Settings:
             raise ValueError("YOUTUBE_REGIONS must contain at least one two-letter region code")
         queries = _pipe_list(
             "YOUTUBE_SEARCH_QUERIES",
-            "MrBeast|Mark Rober|Ryan Trahan|Sidemen|Airrack|creator economy|YouTube challenge|AI creators",
+            "creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator",
         )
+        handles = [h.lstrip("@").strip() for h in _pipe_list(
+            "YOUTUBE_CREATOR_HANDLES",
+            "MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD",
+        ) if h.lstrip("@").strip()]
         return cls(
             youtube_api_key=os.getenv("YOUTUBE_API_KEY", "").strip(),
             openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
@@ -80,10 +86,12 @@ class Settings:
             min_trend_score=float(os.getenv("MIN_TREND_SCORE", "42")),
             max_candidates=_int("MAX_CANDIDATES", 35, 5, 100),
             max_searches_per_run=_int("MAX_SEARCHES_PER_RUN", 4, 1, 10),
+            max_creator_channels_per_run=_int("MAX_CREATOR_CHANNELS_PER_RUN", 4, 1, 10),
             history_retention_days=_int("HISTORY_RETENTION_DAYS", 45, 7, 180),
             min_script_quality=_int("MIN_SCRIPT_QUALITY", 70, 50, 100),
             regions=regions,
             search_queries=queries,
+            creator_handles=handles,
             openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
             tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts").strip(),
             tts_voice=os.getenv("OPENAI_TTS_VOICE", "coral").strip(),
