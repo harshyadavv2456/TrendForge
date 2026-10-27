@@ -23,7 +23,7 @@ The workflow runs every six hours and can also be run manually. It deliberately 
 - This is unattended **after one-time setup**. You must create Google/OpenAI credentials, authorize your channel once, add GitHub Actions secrets, and enable the workflow. GitHub Actions cannot authorize a Google account or invent API credentials on your behalf.
 - GitHub Actions is a scheduled job runner, not a permanent server. Scheduled runs can be delayed and can be disabled by GitHub after 60 days without repository activity in a public repository.
 - No system can guarantee views, revenue, monetization acceptance or viral results. YouTube may review the channel and its uploads under current policies.
-- Automated uploads are enabled only when AUTO_PUBLISH=true. Keep the repository's default branch protected: workflows on the default branch can access configured secrets. Never accept untrusted changes to publishing code without review.
+- After the one-time secrets/OAuth setup, automated uploads are enabled by default; set AUTO_PUBLISH=false to pause posting and generate previews only. Keep the repository's default branch protected: workflows on the default branch can access configured secrets. The scheduled publisher defaults to public posting once those secrets have been configured. Never accept untrusted changes to publishing code without review.
 - YouTube API quota, OAuth status and channel restrictions can limit uploads. Inspect each workflow run and YouTube Studio after initial setup.
 
 ## Setup
