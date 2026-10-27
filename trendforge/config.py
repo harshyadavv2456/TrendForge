@@ -87,7 +87,7 @@ class Settings:
             max_candidates=_int("MAX_CANDIDATES", 35, 5, 100),
             max_searches_per_run=_int("MAX_SEARCHES_PER_RUN", 4, 1, 10),
             max_creator_channels_per_run=_int("MAX_CREATOR_CHANNELS_PER_RUN", 4, 1, 10),
-            history_retention_days=_int("HISTORY_RETENTION_DAYS", 45, 7, 180),
+            history_retention_days=_int("HISTORY_RETENTION_DAYS", 21, 7, 30),
             min_script_quality=_int("MIN_SCRIPT_QUALITY", 70, 50, 100),
             regions=regions,
             search_queries=queries,
