@@ -1,36 +1,41 @@
 # Configuration reference
 
-All non-secret settings can be supplied as GitHub Actions repository **variables** or local environment variables. The workflow's secret values are separate. Groq is used only for script generation; eSpeak NG synthesizes narration locally to avoid paid TTS. YouTube discovery deliberately preserves native API ordering and avoids derived cross-channel scoring.
+Non-secret settings can be supplied as GitHub Actions repository **variables** or local environment variables. API keys and OAuth credentials belong only in GitHub Actions **secrets**. TrendForge uses Groq for script generation and eSpeak NG for local narration; it does not call a paid TTS or LLM endpoint.
 
 | Name | Default | Meaning |
 | --- | --- | --- |
-| AUTO_PUBLISH | true in the workflow by default | true uploads after validation; false produces a preview only |
+| AUTO_PUBLISH | true in the workflow | true uploads after validation; false produces a preview only |
 | MAX_UPLOADS_PER_DAY | 2 | Hard cap based on successful uploads recorded in UTC state |
 | MAX_CANDIDATES | 35 | Maximum current-run candidates considered, interleaved across discovery sources |
-| MAX_SEARCHES_PER_RUN | 4 | Rotating broad niche searches per execution; controls API quota usage |
+| MAX_SEARCHES_PER_RUN | 4 | Rotating niche searches per execution; helps control YouTube API quota use |
 | MAX_CREATOR_CHANNELS_PER_RUN | 4 | Number of tracked creator channels checked for latest uploads per execution |
-| HISTORY_RETENTION_DAYS | 21 | Retention of short-lived source identifiers/deduplication records (maximum 30 days) |
-| MIN_SCRIPT_QUALITY | 70 | Minimum language-model self-score; this is a heuristic gate, not a guarantee |
-| YOUTUBE_REGIONS | US, GB, CA, AU | Regions used for popular-video charts; configure as pipe-separated codes |
-| YOUTUBE_CREATOR_HANDLES | MrBeast / MarkRober / RyanTrahan / Sidemen / Airrack / Mrwhosetheboss / MKBHD | Creator channel handles; entries separated with a pipe character, without the @ prefix |
-| YOUTUBE_SEARCH_QUERIES | niche terms | Search terms rotated across runs; separate entries with a pipe character |
-| OPENAI_MODEL | gpt-4o-mini | Model used for original script/metadata generation; use a model available to your API account |
-| OPENAI_TTS_MODEL | gpt-4o-mini-tts | Model used for narration |
-| OPENAI_TTS_VOICE | coral | Supported voice for the chosen TTS model |
+| HISTORY_RETENTION_DAYS | 21 | Retention for deduplication/source identifiers and publishing records; maximum 30 days |
+| MIN_SCRIPT_QUALITY | 70 | Minimum language-model self-score; a heuristic, not a guarantee |
+| MAX_SOURCE_AGE_DAYS | 14 | Reject sources older than this window (1–30 days) |
+| YOUTUBE_REGIONS | US|GB|CA|AU | Regions used for YouTube's mostPopular chart; pipe-separated codes |
+| YOUTUBE_CREATOR_HANDLES | MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD | Creator channel handles, without @; pipe-separated |
+| YOUTUBE_SEARCH_QUERIES | creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator | Rotating niche search terms; pipe-separated |
+| GROQ_MODEL | openai/gpt-oss-20b | Groq script model; use one available on your Free Plan |
+| LOCAL_TTS_VOICE | en-us+m3 | eSpeak NG voice; runs locally with no TTS API |
 | VIDEO_CATEGORY_ID | 24 | YouTube video category (24 = Entertainment) |
-| VIDEO_PRIVACY_STATUS | public | Requested privacy for uploads; set private or unlisted when wanted |
-| MAX_SOURCE_AGE_DAYS | 14 | Reject sources whose published date is older than this window (1–30 days) |
+| VIDEO_PRIVACY_STATUS | public | Requested upload privacy; choose private/unlisted if desired |
 | VIDEO_LANGUAGE | en | Default language metadata |
-| OPENAI_TTS_INSTRUCTIONS | production voice instructions | Narration tone |
 
 ## Search strategy
 
-TrendForge mixes YouTube's native mostPopular chart order for each region, the latest upload order for a rotating set of actual creator channel handles, and YouTube's native viewCount ordering for recent niche searches. By default, four creator channels and four broad searches are checked per run. Channel IDs are resolved on demand and are not cached. Source lists are interleaved to preserve each endpoint's own order. This is a quota-aware sample, not an exhaustive crawl of YouTube.
+TrendForge uses YouTube's native mostPopular chart order for each configured region, newest uploads from a rotating set of creator channel handles, and recent niche search results ordered by YouTube's viewCount field. Four creator channels and four niche searches run by default at each six-hour interval. This is a quota-aware sample, not an exhaustive crawl of YouTube.
 
 ## Ordering and freshness
 
-TrendForge does not calculate its own cross-channel trend score, view-velocity metric, commercial-fit score or creator-revenue estimate from YouTube API data. It preserves YouTube's own popular-chart order, latest-upload order, and recent query results ordered by YouTube's viewCount field. It rejects sources outside MAX_SOURCE_AGE_DAYS and interleaves the different source lists so one list cannot fill the whole candidate set. YouTube API data is not converted into custom cross-channel scores or revenue estimates. Public metadata shown in workflow artifacts is short-lived. Public view counts are not embedded in generated video.
+TrendForge does not calculate a custom cross-channel trend score, view-velocity metric, commercial-fit score, or creator-revenue estimate from YouTube API data. It preserves the API's native order, interleaves source lists, and applies a published-date freshness check. The API response includes only fields needed for discovery; the pipeline does not cache public view counts or put counts in generated videos. The sample video is a separate offline fixture and is explicitly labelled as a demo.
+
+## Free-tier cost controls
+
+- Groq is used for text generation only; keep the account on the Free Plan. When rate limits are reached, the pipeline stops/filters rather than switching to a paid API.
+- eSpeak NG synthesizes narration locally; FFmpeg and Pillow create the MP4 locally on a GitHub Actions runner.
+- YouTube API usage is quota-limited, not a per-request paid API in this setup. It can stop working until quota resets, and the quota/policies are controlled by Google.
+- GitHub-hosted standard runners are free for this public repository. API limits and provider terms can change.
 
 ## Content volume
 
-Begin with one or two uploads per day. A run may publish zero videos if all candidates are stale, scripts fail validation, or items were recently used. This is intentional; the system should not generate low-value posts just to meet a quota. Raising volume does not guarantee more views and can increase the risk of repetitive content.
+The pipeline produces at most one video per run and defaults to two uploads per UTC day. A run may publish zero videos if all candidates are stale, scripts fail validation, or items were recently used. The system should not generate low-value posts merely to fill a quota.
