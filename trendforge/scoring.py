@@ -21,7 +21,7 @@ def score_video(
     previous: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Add velocity estimates and a 0..100 ranking; weights are configurable in code."""
+    """Add trend and commercial-fit heuristics; neither predicts actual views or revenue."""
     now = now or datetime.now(timezone.utc)
     snippet = video.get("snippet", {})
     stats = video.get("statistics", {})
@@ -46,6 +46,7 @@ def score_video(
     engagement_score = min(100.0, engagement_rate * 18.0)
     title = str(snippet.get("title", "")).lower()
     category_id = str(snippet.get("categoryId", ""))
+
     high_value_terms = (
         "challenge", "creator", "business", "ai", "technology", "tech", "money",
         "entrepreneur", "experiment", "gaming", "science", "review", "strategy",
@@ -54,15 +55,28 @@ def score_video(
     topic_fit = min(100.0, 38.0 + sum(10 for term in high_value_terms if term in title))
     if category_id in {"20", "22", "23", "24", "28"}:
         topic_fit = min(100.0, topic_fit + 10.0)
+
+    # Proxy for sponsor/advertiser relevance from public title/category only.
+    # It is explicitly not a measure of the creator's earnings or actual RPM.
+    commercial_terms = (
+        "business", "software", "technology", "tech", "ai", "finance", "money",
+        "startup", "entrepreneur", "productivity", "marketing", "review", "tools",
+        "creator economy", "sponsor", "camera", "gear", "investing", "saas",
+    )
+    commercial_fit = min(100.0, 28.0 + sum(13 for term in commercial_terms if term in title))
+    if category_id in {"26", "27", "28"}:
+        commercial_fit = min(100.0, commercial_fit + 15.0)
+
     # Region presence is a weak audience-fit signal, not proof of viewers' location.
     regions = video.get("regions", [])
     western_fit = 100.0 if "US" in regions else (82.0 if any(r in regions for r in ("GB", "CA", "AU")) else 60.0)
     score = (
-        velocity_score * 0.30
-        + freshness * 0.20
-        + view_strength * 0.15
-        + engagement_score * 0.10
-        + topic_fit * 0.15
+        velocity_score * 0.27
+        + freshness * 0.18
+        + view_strength * 0.12
+        + engagement_score * 0.08
+        + topic_fit * 0.13
+        + commercial_fit * 0.12
         + western_fit * 0.10
     )
     video["trend"] = {
@@ -71,6 +85,8 @@ def score_video(
         "views_per_hour_estimate": round(velocity, 1),
         "freshness": round(freshness, 1),
         "engagement_rate_percent": round(engagement_rate, 3),
-        "scoring_version": 1,
+        "topic_fit": round(topic_fit, 1),
+        "commercial_fit_proxy": round(commercial_fit, 1),
+        "scoring_version": 2,
     }
     return video
