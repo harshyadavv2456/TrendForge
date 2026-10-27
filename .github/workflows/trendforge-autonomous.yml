@@ -22,6 +22,10 @@ on:
         type: choice
         options: ["30", "45", "55"]
         default: "55"
+      source_media_url:
+        description: Direct HTTPS MP4 URL (works reliably; optional if yt-dlp download succeeds)
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -43,7 +47,7 @@ jobs:
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
         run: |
-          echo "::notice::Autonomous mode: fetching trending YouTube videos and clipping authorized source footage."
+          echo "::notice::Autonomous mode: clipping authorized source footage into vertical Shorts."
           echo "::notice::The operator is responsible for verifying reuse rights for any footage processed."
           if [ "$PUBLISH" = "true" ]; then
             missing=""
@@ -86,6 +90,7 @@ jobs:
             echo "source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw" >> $GITHUB_OUTPUT
             echo "source_title=Me at the zoo" >> $GITHUB_OUTPUT
             echo "source_creator=Jawed Karim" >> $GITHUB_OUTPUT
+            echo "source_media_url=" >> $GITHUB_OUTPUT
             exit 0
           fi
           python -m trendforge.discover --count "${{ inputs.count }}" --json > outputs/discovery.json
@@ -101,32 +106,84 @@ jobs:
               out.write(f"source_url={top['url']}\n")
               out.write(f"source_title={top['title']}\n")
               out.write(f"source_creator={top['creator']}\n")
+              out.write("source_media_url=\n")
           PY
 
-      - name: Download source video via yt-dlp
+      - name: Download source video (direct media URL or yt-dlp fallback)
+        id: download
+        env:
+          SOURCE_MEDIA_URL: ${{ inputs.source_media_url }}
+          SOURCE_URL: ${{ steps.discover.outputs.source_url }}
+          SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
+          SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
+          SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
+          SOURCE_RIGHTS_CONFIRMED: "true"
+        run: |
+          mkdir -p outputs/source
+          python - <<'PY'
+          import os, sys
+          from pathlib import Path
+          from trendforge.clipper import download_source, ClipError
+
+          media_url = os.getenv("SOURCE_MEDIA_URL", "").strip()
+          source_url = os.getenv("SOURCE_URL", "").strip()
+
+          if media_url:
+              try:
+                  path = download_source(media_url, Path("outputs/source/source-video.mp4"), rights_confirmed=True)
+                  print(f"Direct media URL downloaded: {path}")
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+                      out.write("source_path=outputs/source/source-video.mp4\n")
+                      out.write("downloaded=true\n")
+              except ClipError as exc:
+                  print(f"Direct media URL download failed: {exc}")
+                  sys.exit(1)
+          elif source_url and ("youtube.com/" in source_url or "youtu.be/" in source_url):
+              print("Attempting yt-dlp download from YouTube (best-effort).")
+              sys.exit(0)  # handled by yt-dlp step below
+          else:
+              print("No source media URL provided and no YouTube URL to download.")
+              sys.exit(1)
+          PY
+
+      - name: Download via yt-dlp (YouTube fallback)
+        if: steps.download.outputs.downloaded != 'true' && env.SOURCE_URL != ''
         env:
           SOURCE_URL: ${{ steps.discover.outputs.source_url }}
         run: |
-          mkdir -p outputs/source
-          yt-dlp \
-            --no-check-certificates \
-            --no-warnings \
-            --quiet \
-            --no-playlist \
-            --format "best[height<=720][ext=mp4]/best" \
-            --extractor-args "youtube:player_client=android" \
-            --output "outputs/source/source-video.%(ext)s" \
-            "$SOURCE_URL"
-          ls -la outputs/source/
+          if yt-dlp \
+              --no-check-certificates \
+              --no-warnings \
+              --quiet \
+              --no-playlist \
+              --format "best[height<=720][ext=mp4]/best" \
+              --extractor-args "youtube:player_client=android" \
+              --output "outputs/source/source-video.%(ext)s" \
+              "$SOURCE_URL"; then
+            echo "yt-dlp download succeeded."
+            echo "source_path=outputs/source/source-video.mp4" >> $GITHUB_OUTPUT
+            echo "downloaded=true" >> $GITHUB_OUTPUT
+          else
+            echo "::warning::yt-dlp download failed (YouTube bot detection on CI is common)."
+            echo "Provide source_media_url (direct HTTPS MP4 URL) as a workflow input for reliable downloads."
+            echo "downloaded=false" >> $GITHUB_OUTPUT
+          fi
 
-      - name: Build Shorts series (connected parts, fast PART overlay)
+      - name: Build Shorts series from downloaded source
+        if: steps.download.outputs.downloaded == 'true'
         env:
           SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
           SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
           SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
+          SOURCE_RIGHTS_CONFIRMED: "true"
         run: |
+          if [ -n "${{ steps.download.outputs.source_path }}" ]; then
+            INPUT="${{ steps.download.outputs.source_path }}"
+          else
+            INPUT="outputs/source/source-video.mp4"
+          fi
           python -m trendforge.series \
-            --input outputs/source/source-video.mp4 \
+            --input "$INPUT" \
             --output-dir outputs/series \
             --source-url "$SOURCE_VIDEO_URL" \
             --title "$SOURCE_VIDEO_TITLE" \
@@ -137,7 +194,7 @@ jobs:
             --overlay-seconds 2
 
       - name: Publish Shorts to YouTube
-        if: ${{ inputs.publish == 'true' }}
+        if: ${{ inputs.publish == 'true' && steps.download.outputs.downloaded == 'true' }}
         env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
