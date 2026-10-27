@@ -166,6 +166,8 @@ def candidate_summary(video: dict[str, Any]) -> dict[str, Any]:
         "description": str(snippet.get("description", ""))[:1200],
         "regions": video.get("regions", []),
         "trend_score": float(trend.get("score", 0)),
+        "commercial_fit_proxy": float(trend.get("commercial_fit_proxy", 0)),
+        "commercial_fit_note": "heuristic from public title/category only; not actual revenue or RPM",
         "views_per_hour_estimate": float(trend.get("views_per_hour_estimate", 0)),
         "age_hours": float(trend.get("age_hours", 0)),
         "category_id": str(snippet.get("categoryId", "")),
