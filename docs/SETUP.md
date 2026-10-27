@@ -52,9 +52,8 @@ Under **Settings → Secrets and variables → Actions → Variables**, add:
 | --- | --- | --- |
 | AUTO_PUBLISH | false | true, after validating a preview |
 | MAX_UPLOADS_PER_DAY | 2 | 1–2 to start |
-| MIN_TREND_SCORE | 42 | 42; tune from observed results |
 | MAX_SEARCHES_PER_RUN | 4 | 4 |
-| YOUTUBE_REGIONS | US|GB|CA|AU | Same |
+| YOUTUBE_REGIONS | US, GB, CA, AU | Same |
 | VIDEO_PRIVACY_STATUS | private | public after verifying upload behavior |
 
 Other supported variables are listed in CONFIGURATION.md. If an optional variable is absent, the workflow uses its default.
@@ -64,8 +63,8 @@ Other supported variables are listed in CONFIGURATION.md. If an optional variabl
 1. Under **Settings → Actions → General**, ensure Actions are allowed for the repository. Workflow permissions must allow the workflow's GITHUB_TOKEN to write repository contents so it can update data/state.json. Do not grant broad organization permissions unnecessarily.
 2. Keep the default branch set to main. The publishing workflow deliberately runs only from main.
 3. Trigger **Actions → TrendForge Shorts Pipeline → Run workflow**.
-4. Keep AUTO_PUBLISH=false for the first run. If a candidate scores well, the workflow should render a motion-graphic MP4 and attach it as a short-lived artifact. The run report is also written to the Actions summary.
-5. Inspect the preview, narration, captions, factual accuracy and metadata artifact. If no candidate meets the score threshold, nothing is rendered; you can temporarily lower MIN_TREND_SCORE to 35 for discovery testing.
+4. Keep AUTO_PUBLISH=false for the first run. If an eligible recent candidate is available, the workflow should render a motion-graphic MP4 and attach it as a short-lived artifact. The run report is also written to the Actions summary.
+5. Inspect the preview, narration, captions, factual accuracy and metadata artifact. If no fresh candidate is found or all scripts fail validation, nothing is rendered; inspect the run summary before changing the freshness window.
 6. After you are satisfied and OAuth is stable, change AUTO_PUBLISH=true and VIDEO_PRIVACY_STATUS=public. The schedule will then publish up to MAX_UPLOADS_PER_DAY videos without per-video approval.
 
 Uploads, channel policy, OAuth expiry, quota errors and returned privacy status must be checked in the first production run. Do not assume an HTTP success means that a video is public; the pipeline records the actual returned privacy status.
