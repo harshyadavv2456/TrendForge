@@ -110,7 +110,7 @@ def main() -> int:
         raise SystemExit(f"Invalid demo video duration/size: {duration}s / {size_bytes} bytes")
     print(f"Demo created: {target.relative_to(ROOT)}")
     print(f"Resolution: {video['width']}x{video['height']}; duration: {duration:.1f}s; size: {size_bytes:,} bytes")
-    print("Paid/AI provider APIs used: none. Narration: local Piper neural TTS.")
+    print(f"Paid/LLM/TTS APIs used for this fixture: none. Narration: {rendered['audio']}.")
     return 0
 
 
