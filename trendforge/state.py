@@ -18,8 +18,6 @@ def blank_state() -> dict[str, Any]:
         "last_run": None,
         "query_cursor": 0,
         "creator_cursor": 0,
-        "creator_channels": {},
-        "videos": {},
         "generated": [],
         "published": [],
         "last_error": None,
@@ -35,7 +33,11 @@ def load_state(path: Path) -> dict[str, Any]:
             return blank_state()
         defaults = blank_state()
         defaults.update(data)
-        for key in ("videos", "creator_channels", "generated", "published"):
+        # Drop legacy custom-score and cached channel/video snapshots. Public YouTube API
+        # data should not be kept or derived into proprietary performance metrics here.
+        defaults.pop("videos", None)
+        defaults.pop("creator_channels", None)
+        for key in ("generated", "published"):
             if not isinstance(defaults.get(key), type(blank_state()[key])):
                 defaults[key] = blank_state()[key]
         return defaults
@@ -51,7 +53,7 @@ def save_state(path: Path, state: dict[str, Any]) -> None:
     os.replace(temp, path)
 
 
-def trim_history(state: dict[str, Any], retention_days: int = 45) -> None:
+def trim_history(state: dict[str, Any], retention_days: int = 21) -> None:
     now = datetime.now(timezone.utc)
     cutoff = now.timestamp() - retention_days * 86400
     for key in ("generated", "published"):
@@ -65,11 +67,3 @@ def trim_history(state: dict[str, Any], retention_days: int = 45) -> None:
             except (ValueError, TypeError):
                 kept.append(entry)
         state[key] = kept
-    videos = state.get("videos", {})
-    for video_id, entry in list(videos.items()):
-        try:
-            dt = datetime.fromisoformat(str(entry.get("last_seen", "")).replace("Z", "+00:00"))
-            if dt.timestamp() < cutoff:
-                del videos[video_id]
-        except (ValueError, TypeError):
-            del videos[video_id]
