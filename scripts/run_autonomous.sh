@@ -2,7 +2,7 @@
 # TrendForge Autonomous Shorts — Local Runner (cache + retry + continuous)
 # Runs full pipeline: retry unpublished → discover → download → render → publish
 # Set up with cron to run every 2 hours for full autonomy.
-set -euo pipefail
+set -eo pipefail
 
 cd /Users/harshyadav/TrendForge
 source .venv/bin/activate
