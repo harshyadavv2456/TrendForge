@@ -29,6 +29,7 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
             handle = params["channelId"].removeprefix("id_")
             return {"items": [{"id": {"videoId": f"video_{handle}"}}]}
         if endpoint == "search" and params.get("q"):
+            assert params["order"] == "viewCount"
             return {"items": []}
         if endpoint == "videos" and params.get("id"):
             result = []
@@ -49,12 +50,14 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
         raise AssertionError(f"Unexpected mocked API call: {endpoint}, {params}")
 
     monkeypatch.setattr(youtube, "_get", fake_get)
-    state = {"videos": {}, "creator_channels": {}, "creator_cursor": 0, "query_cursor": 0}
+    state = {"creator_cursor": 0, "query_cursor": 0}
     candidates = youtube.fetch_candidates(settings, state)
 
     assert len(candidates) == 2
     assert set(search_channels) == {"id_AlphaCreator", "id_BetaCreator"}
     assert set(channel_lookups) == {"AlphaCreator", "BetaCreator"}
     assert state["creator_cursor"] == 0
-    assert set(state["creator_channels"]) == {"AlphaCreator", "BetaCreator"}
-    assert all(item["trend"]["score"] > 0 for item in candidates)
+    assert all(item["discovery"]["source_kind"] == "creator_latest" for item in candidates)
+    assert [item["discovery"]["source_rank"] for item in candidates] == [1, 1]
+    assert "videos" not in state
+    assert "creator_channels" not in state
