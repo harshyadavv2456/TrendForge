@@ -17,6 +17,8 @@ def blank_state() -> dict[str, Any]:
         "schema_version": 1,
         "last_run": None,
         "query_cursor": 0,
+        "creator_cursor": 0,
+        "creator_channels": {},
         "videos": {},
         "generated": [],
         "published": [],
@@ -33,7 +35,7 @@ def load_state(path: Path) -> dict[str, Any]:
             return blank_state()
         defaults = blank_state()
         defaults.update(data)
-        for key in ("videos", "generated", "published"):
+        for key in ("videos", "creator_channels", "generated", "published"):
             if not isinstance(defaults.get(key), type(blank_state()[key])):
                 defaults[key] = blank_state()[key]
         return defaults
