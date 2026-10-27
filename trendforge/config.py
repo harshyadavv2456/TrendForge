@@ -36,7 +36,7 @@ def _pipe_list(name: str, default: str) -> list[str]:
 @dataclass(frozen=True)
 class Settings:
     youtube_api_key: str
-    openai_api_key: str
+    groq_api_key: str
     youtube_client_id: str
     youtube_client_secret: str
     youtube_refresh_token: str
@@ -51,10 +51,8 @@ class Settings:
     regions: list[str]
     search_queries: list[str]
     creator_handles: list[str]
-    openai_model: str
-    tts_model: str
+    groq_model: str
     tts_voice: str
-    tts_instructions: str
     video_language: str
     video_category_id: str
     video_privacy_status: str
@@ -77,7 +75,7 @@ class Settings:
         ) if h.lstrip("@").strip()]
         return cls(
             youtube_api_key=os.getenv("YOUTUBE_API_KEY", "").strip(),
-            openai_api_key=os.getenv("OPENAI_API_KEY", "").strip(),
+            groq_api_key=os.getenv("GROQ_API_KEY", "").strip(),
             youtube_client_id=os.getenv("YOUTUBE_CLIENT_ID", "").strip(),
             youtube_client_secret=os.getenv("YOUTUBE_CLIENT_SECRET", "").strip(),
             youtube_refresh_token=os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip(),
@@ -92,13 +90,8 @@ class Settings:
             regions=regions,
             search_queries=queries,
             creator_handles=handles,
-            openai_model=os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip(),
-            tts_model=os.getenv("OPENAI_TTS_MODEL", "gpt-4o-mini-tts").strip(),
-            tts_voice=os.getenv("OPENAI_TTS_VOICE", "coral").strip(),
-            tts_instructions=os.getenv(
-                "OPENAI_TTS_INSTRUCTIONS",
-                "Speak with clear, energetic, natural American-English delivery. Sound curious and analytical, not exaggerated or clickbait-heavy.",
-            ).strip(),
+            groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip(),
+            tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-us+m3").strip(),
             video_language=os.getenv("VIDEO_LANGUAGE", "en").strip(),
             video_category_id=os.getenv("VIDEO_CATEGORY_ID", "24").strip(),
             video_privacy_status=os.getenv("VIDEO_PRIVACY_STATUS", "public").strip().lower(),
@@ -109,8 +102,8 @@ class Settings:
         missing = []
         if not self.youtube_api_key:
             missing.append("YOUTUBE_API_KEY")
-        if not self.openai_api_key:
-            missing.append("OPENAI_API_KEY")
+        if not self.groq_api_key:
+            missing.append("GROQ_API_KEY")
         if self.auto_publish:
             for name, value in (
                 ("YOUTUBE_CLIENT_ID", self.youtube_client_id),
