@@ -32,7 +32,7 @@ TrendForge does not calculate a custom cross-channel trend score, view-velocity 
 ## Free-tier cost controls
 
 - Groq is used for text generation only; keep the account on the Free Plan. When rate limits are reached, the pipeline stops/filters rather than switching to a paid API.
-- eSpeak NG synthesizes narration locally; FFmpeg and Pillow create the MP4 locally on a GitHub Actions runner.
+- Piper TTS synthesizes narration locally; FFmpeg and Pillow create the MP4 locally on a GitHub Actions runner. The default English voice is MIT-licensed.
 - YouTube API usage is quota-limited, not a per-request paid API in this setup. It can stop working until quota resets, and the quota/policies are controlled by Google.
 - GitHub-hosted standard runners are free for this public repository. API limits and provider terms can change.
 
