@@ -63,7 +63,7 @@ jobs:
         if: steps.preflight.outputs.ready == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
           ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
 
       - name: Install Python dependencies
