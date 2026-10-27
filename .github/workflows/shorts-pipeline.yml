@@ -92,10 +92,12 @@ jobs:
           MIN_TREND_SCORE: ${{ vars.MIN_TREND_SCORE || '42' }}
           MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES || '35' }}
           MAX_SEARCHES_PER_RUN: ${{ vars.MAX_SEARCHES_PER_RUN || '4' }}
+          MAX_CREATOR_CHANNELS_PER_RUN: ${{ vars.MAX_CREATOR_CHANNELS_PER_RUN || '4' }}
           HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '45' }}
           MIN_SCRIPT_QUALITY: ${{ vars.MIN_SCRIPT_QUALITY || '70' }}
           YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
-          YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'MrBeast|Mark Rober|Ryan Trahan|Sidemen|Airrack|Mrwhosetheboss|Marques Brownlee|creator economy|YouTube challenge|AI creators|gaming creator|business creator' }}
+          YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
+          YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator' }}
           OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
           OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts' }}
           OPENAI_TTS_VOICE: ${{ vars.OPENAI_TTS_VOICE || 'coral' }}
