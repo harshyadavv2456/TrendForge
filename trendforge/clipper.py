@@ -371,25 +371,81 @@ def write_ass_captions(segments: list[TranscriptSegment], start: float, end: flo
     path.write_text("\n".join(header + rows) + "\n", encoding="utf-8")
 
 
+def _ffmpeg_has_subtitles_filter() -> bool:
+    try:
+        probe = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-filters"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+        return " subtitles " in probe.stdout or " subtitles" in probe.stdout
+    except Exception:
+        return False
+
+
+_SUBTITLES_FILTER_AVAILABLE = _ffmpeg_has_subtitles_filter()
+
+
+def _render_credit_image(path: Path, text: str, width: int = 1080, height: int = 130) -> Path:
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    y = 18
+    for line in text.split("\n"):
+        if not line.strip():
+            continue
+        bbox = draw.textbbox((0, 0), line)
+        line_h = bbox[3] - bbox[1]
+        draw.text((20, y), line, fill=(255, 255, 255, 245))
+        y += line_h + 4
+    img_path = path.parent / f"{path.stem}-credit.png"
+    img.save(img_path)
+    return img_path
+
+
 def render_clip(source: Path, candidate: ClipCandidate, segments: list[TranscriptSegment], destination: Path,
                 creator: str, title: str, source_url: str) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     workdir = destination.parent / ".work"
     workdir.mkdir(parents=True, exist_ok=True)
-    subtitle_path = workdir / f"{destination.stem}.ass"
-    write_ass_captions(segments, candidate.start, candidate.end, subtitle_path, creator, title)
-    subtitle_arg = str(subtitle_path.resolve()).replace("\\", "/").replace(":", r"\:").replace("'", r"\'")
-    vf = (
-        "[0:v]split=2[bg][fg];"
-        "[bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=10:3,scale=1080:1920[background];"
-        "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[foreground];"
-        f"[background][foreground]overlay=(W-w)/2:(H-h)/2,subtitles='{subtitle_arg}'[v]"
-    )
-    _run([
-        "ffmpeg", "-y", "-ss", f"{candidate.start:.3f}", "-i", str(source), "-t", f"{candidate.end-candidate.start:.3f}",
-        "-filter_complex", vf, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-threads", "2",
-        "-c:a", "aac", "-b:a", "128k", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(destination),
-    ], "Source clip rendering", timeout=360)
+
+    inputs = [str(source)]
+
+    if _SUBTITLES_FILTER_AVAILABLE and segments:
+        subtitle_path = workdir / f"{destination.stem}.ass"
+        write_ass_captions(segments, candidate.start, candidate.end, subtitle_path, creator, title)
+        subtitle_arg = str(subtitle_path.resolve()).replace("\\", "/").replace(" ", "\\ ")
+        vf = (
+            "[0:v]split=2[bg][fg];"
+            "[bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=10:3,scale=1080:1920[background];"
+            "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[foreground];"
+            f"[background][foreground]overlay=(W-w)/2:(H-h)/2,subtitles={subtitle_arg}[v]"
+        )
+    else:
+        credit_text = f"SOURCE: {creator[:60]} — {title[:70]}".replace("{", "").replace("}", "")
+        credit_path = _render_credit_image(workdir, credit_text)
+        inputs.append(str(credit_path))
+        vf = (
+            "[0:v]split=2[bg][fg];"
+            "[bg]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=10:3,scale=1080:1920[background];"
+            "[fg]scale=1080:1920:force_original_aspect_ratio=decrease[foreground];"
+            "[background][foreground]overlay=(W-w)/2:(H-h)/2[base];"
+            "[1:v]scale=1080:130[credit];"
+            "[base][credit]overlay=0:H-h[v]"
+        )
+
+    cmd = ["ffmpeg", "-y", "-ss", f"{candidate.start:.3f}", "-i", str(source)]
+    if len(inputs) > 1:
+        cmd += ["-i", inputs[1]]
+    duration = candidate.end - candidate.start
+    cmd += [
+        "-filter_complex", vf, "-map", "[v]", "-map", "0:a?", "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+        "-threads", "2", "-c:a", "aac", "-b:a", "128k", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        "-t", f"{duration:.3f}", str(destination),
+    ]
+    _run(cmd, "Source clip rendering", timeout=360)
     probe = _probe(destination)
     if abs(float(probe["duration_seconds"]) - (candidate.end - candidate.start)) > 2.0:
         raise ClipError("Rendered clip duration does not match its selected source interval.")
