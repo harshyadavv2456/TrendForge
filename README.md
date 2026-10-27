@@ -11,7 +11,7 @@ TrendForge monitors popular charts in the US, UK, Canada and Australia, tracks s
 1. Fetch YouTube popular charts by region, the latest uploads from a rotating list of actual creator channels, and recent videos matching broader niche searches.
 2. Preserve YouTube's own ordering, retain the source's returned position and reject stale uploads; no custom cross-channel performance or creator-revenue scores are calculated.
 3. Ask the configured language model for an original, fact-constrained commentary script with a distinct insight, title, description, tags, hashtags and storyboard.
-4. Generate narration locally with eSpeak NG, create original motion-graphic scene cards, add timed captions and encode a vertical MP4 with FFmpeg.
+4. Generate narration locally with Piper neural TTS, create original motion-graphic scene cards, add styled captions and encode a vertical MP4 with FFmpeg.
 5. Run basic script validation, source/content deduplication, metadata checks and daily-volume gates.
 6. Upload to the connected YouTube channel via the official resumable upload endpoint.
 7. Retain only short-lived deduplication identifiers and publishing records, write a GitHub Actions summary, and retain the rendered MP4 as a short-lived workflow artifact.
@@ -42,7 +42,7 @@ Optional Actions variables are documented in docs/CONFIGURATION.md. Secrets belo
 
 ## Local development
 
-Requires Python 3.11+, FFmpeg (with libass subtitles), eSpeak NG, a Groq API key, and a YouTube API key. Create a local .env from .env.example, install dependencies, then run:
+Requires Python 3.11+, FFmpeg (with libass subtitles), Piper TTS, a Groq API key, and a YouTube API key. Create a local .env from .env.example, install dependencies, then run:
 
     python -m venv .venv
     source .venv/bin/activate
@@ -50,7 +50,7 @@ Requires Python 3.11+, FFmpeg (with libass subtitles), eSpeak NG, a Groq API key
     python -m trendforge.pipeline --self-test
     python -m trendforge.pipeline
 
-The workflow installs FFmpeg and eSpeak NG on an Ubuntu runner. Both script rendering and narration run locally; no paid TTS service is used. Never commit .env, OAuth JSON, access tokens, refresh tokens, generated media, or raw credentials.
+The workflow installs FFmpeg and uses Piper's local neural voice model on an Ubuntu runner. The TTS model is cached outside Git; no paid TTS service is used. Never commit .env, OAuth JSON, access tokens, refresh tokens, generated media, or raw credentials.
 
 ## Project status
 
