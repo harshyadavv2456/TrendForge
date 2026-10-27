@@ -58,6 +58,7 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
     assert set(channel_lookups) == {"AlphaCreator", "BetaCreator"}
     assert state["creator_cursor"] == 0
     assert all(item["discovery"]["source_kind"] == "creator_latest" for item in candidates)
+    assert all("statistics" not in item for item in candidates)
     assert [item["discovery"]["source_rank"] for item in candidates] == [1, 1]
     assert "videos" not in state
     assert "creator_channels" not in state
