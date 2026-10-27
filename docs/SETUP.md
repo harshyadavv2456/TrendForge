@@ -42,7 +42,7 @@ Open the repository's **Settings → Secrets and variables → Actions → New r
 - YOUTUBE_CLIENT_SECRET
 - YOUTUBE_REFRESH_TOKEN
 
-The workflow passes secrets only to the main pipeline step, not to dependency installation or the unit-test step. No credential belongs in a committed file.
+The workflow passes secrets only to the main pipeline step, not to dependency installation or the unit-test step. No credential belongs in a committed file. The pipeline preflight skips all API work until YOUTUBE_API_KEY and OPENAI_API_KEY are present; if AUTO_PUBLISH is true, all three OAuth secrets must also exist.
 
 ## 5. Configure repository variables
 
@@ -83,4 +83,4 @@ GitHub may delay scheduled jobs during periods of heavy load and automatically d
 - **Upload returns private or unlisted:** inspect the returned API status and YouTube Studio; check channel settings, API project restrictions and privacy configuration.
 - **OpenAI insufficient_quota or model error:** check account billing, model access, and the configured OPENAI_MODEL / OPENAI_TTS_MODEL.
 - **FFmpeg subtitle error:** check that the runner installed FFmpeg with libass subtitle support.
-- **No video generated:** read the Actions summary; the score threshold, deduplication window, quality gate or daily upload cap may have prevented a post.
+- **No video generated:** inspect the short-lived run artifact and summary; the source freshness window, deduplication window, script validation or daily upload cap may have prevented a post.
