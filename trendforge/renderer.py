@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -225,14 +226,34 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     narration = " ".join(scene["narration"] for scene in scenes)
 
     # Piper synthesizes narration locally using an open neural voice model; no TTS API is called.
-    # The model is downloaded once to the user cache and can be restored from GitHub Actions cache.
+    # Download the model only when absent; GitHub Actions caches this directory between runs.
     piper_dir.mkdir(parents=True, exist_ok=True)
+    model_path = piper_dir / f"{settings.tts_voice}.onnx"
+    model_config_path = piper_dir / f"{settings.tts_voice}.onnx.json"
+    if not model_path.is_file() or not model_config_path.is_file():
+        try:
+            subprocess.run(
+                [
+                    sys.executable, "-m", "piper.download_voices",
+                    settings.tts_voice, "--data-dir", str(piper_dir),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+        except FileNotFoundError as exc:
+            raise RenderError("Piper TTS is required for free local narration. Install the piper-tts Python package.") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RenderError("Downloading the Piper voice model timed out.") from exc
+        except subprocess.CalledProcessError as exc:
+            raise RenderError(f"Could not download Piper voice model: {(exc.stderr or exc.stdout or '')[-1200:]}") from exc
     try:
         subprocess.run(
             [
                 "piper",
                 "--model", settings.tts_voice,
-                "--download-dir", str(piper_dir),
+                "--data-dir", str(piper_dir),
                 "--output_file", str(audio_path),
             ],
             input=narration,
