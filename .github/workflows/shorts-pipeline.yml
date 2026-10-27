@@ -1,139 +1,47 @@
-name: TrendForge Shorts Pipeline
+name: TrendForge Original-Graphics Preview (Manual Only)
 
 on:
-  schedule:
-    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: trendforge-main-pipeline
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  produce-and-publish:
+  preview:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
-      - name: Checkout default branch
-        id: checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          ref: main
-          fetch-depth: 0
           persist-credentials: false
-
-      - name: Check one-time setup
-        id: preflight
-        env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'true' }}
-        run: |
-          missing=""
-          [ -n "$YOUTUBE_API_KEY" ] || missing="$missing YOUTUBE_API_KEY"
-          [ -n "$GROQ_API_KEY" ] || missing="$missing GROQ_API_KEY"
-          if [ "$AUTO_PUBLISH" = "true" ]; then
-            [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
-            [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
-            [ -n "$YOUTUBE_REFRESH_TOKEN" ] || missing="$missing YOUTUBE_REFRESH_TOKEN"
-          fi
-          if [ -n "$missing" ]; then
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "## TrendForge setup required" >> "$GITHUB_STEP_SUMMARY"
-            echo "No API calls or publishing performed. Configure these repository Actions secrets before enabling the pipeline:$missing" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Set up Python
-        if: steps.preflight.outputs.ready == 'true'
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
-
       - name: Install rendering dependencies
-        if: steps.preflight.outputs.ready == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
-          ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
-
       - name: Install Python dependencies
-        if: steps.preflight.outputs.ready == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
-      - name: Cache Piper neural voice model
-        if: steps.preflight.outputs.ready == 'true'
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/piper
-          key: trendforge-piper-${{ vars.LOCAL_TTS_VOICE || 'en_US-lessac-medium' }}-v1
-
-      - name: Run unit tests and credential-free checks
-        if: steps.preflight.outputs.ready == 'true'
+      - name: Run tests and create preview-only original graphics
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }
+          AUTO_PUBLISH: "false"
+          MAX_CANDIDATES: "20"
         run: |
           pytest -q
           python -m trendforge.pipeline --self-test
-
-      - name: Discover trends, create a Short, and publish when enabled
-        if: steps.preflight.outputs.ready == 'true'
-        id: pipeline
-        env:
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'true' }}
-          MAX_UPLOADS_PER_DAY: ${{ vars.MAX_UPLOADS_PER_DAY || '2' }}
-          MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES || '35' }}
-          MAX_SEARCHES_PER_RUN: ${{ vars.MAX_SEARCHES_PER_RUN || '4' }}
-          MAX_CREATOR_CHANNELS_PER_RUN: ${{ vars.MAX_CREATOR_CHANNELS_PER_RUN || '4' }}
-          HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '21' }}
-          MAX_SOURCE_AGE_DAYS: ${{ vars.MAX_SOURCE_AGE_DAYS || '14' }}
-          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
-          LOCAL_TTS_VOICE: ${{ vars.LOCAL_TTS_VOICE || 'en_US-lessac-medium' }}
-          MIN_SCRIPT_QUALITY: ${{ vars.MIN_SCRIPT_QUALITY || '70' }}
-          YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
-          YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
-          YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator' }}
-          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
-          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
-        run: python -m trendforge.pipeline
-
-      - name: Persist trend history (no credentials committed)
-        if: always() && steps.checkout.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/state.json
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: update TrendForge trend history [skip ci]"
-            git fetch origin main
-            git rebase origin/main
-            AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
-            git -c http.extraheader="AUTHORIZATION: basic $AUTH" push origin "HEAD:main"
-          else
-            echo "No state changes to commit."
-          fi
-
-      - name: Upload rendered Short and run report
+          python -m trendforge.pipeline
+      - name: Save original-graphics preview
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trendforge-run-${{ github.run_number }}
+          name: trendforge-original-graphics-preview-${{ github.run_number }
           path: |
             outputs/*.mp4
             outputs/run-summary.md

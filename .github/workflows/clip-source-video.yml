@@ -1,0 +1,132 @@
+name: TrendForge Real-Footage Clipper
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_media_url:
+        description: Direct HTTPS URL to an authorized MP4/MOV/WebM file (not a YouTube watch URL)
+        required: true
+        type: string
+      source_page_url:
+        description: Canonical YouTube/source page to credit in the clip description
+        required: true
+        type: string
+      source_video_title:
+        description: Original source video title
+        required: true
+        type: string
+      source_video_creator:
+        description: Original creator/channel name
+        required: true
+        type: string
+      rights_confirmed:
+        description: I own this footage or have permission/a license allowing clipping and republishing
+        required: true
+        type: boolean
+        default: false
+      clip_count:
+        description: Number of non-overlapping clips to create
+        required: true
+        type: choice
+        options: ["1", "2", "3"]
+        default: "3"
+      clip_seconds:
+        description: Target clip duration
+        required: true
+        type: choice
+        options: ["20", "30", "40", "50", "60"]
+        default: "30"
+      publish:
+        description: Upload the generated clips publicly to the configured channel (requires OAuth secrets)
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trendforge-real-footage-clipper
+  cancel-in-progress: false
+
+jobs:
+  clip-source-footage:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Validate rights and publishing credentials
+        env:
+          RIGHTS_CONFIRMED: ${{ inputs.rights_confirmed }
+          PUBLISH: ${{ inputs.publish }
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }
+        run: |
+          if [ "$RIGHTS_CONFIRMED" != "true" ]; then
+            echo "::error::Confirm that you own or are licensed to republish the source footage."
+            exit 1
+          fi
+          if [ "$PUBLISH" = "true" ]; then
+            missing=""
+            [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
+            [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
+            [ -n "$YOUTUBE_REFRESH_TOKEN" ] || missing="$missing YOUTUBE_REFRESH_TOKEN"
+            if [ -n "$missing" ]; then
+              echo "::error::Publishing requested but OAuth secrets are missing:$missing"
+              exit 1
+            fi
+          fi
+          echo "Rights confirmation received. The operator is responsible for verifying source rights."
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install FFmpeg and Python clipper dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          python -m pip install --upgrade pip
+          pip install -r requirements-clipper.txt
+
+      - name: Test clipping logic
+        run: |
+          pip install pytest
+          pytest -q tests/test_clipper.py
+
+      - name: Analyse source footage and render actual clips
+        env:
+          SOURCE_MEDIA_URL: ${{ inputs.source_media_url }
+          SOURCE_VIDEO_URL: ${{ inputs.source_page_url }
+          SOURCE_VIDEO_TITLE: ${{ inputs.source_video_title }
+          SOURCE_VIDEO_CREATOR: ${{ inputs.source_video_creator }
+          SOURCE_RIGHTS_CONFIRMED: ${{ inputs.rights_confirmed }
+          CLIP_COUNT: ${{ inputs.clip_count }
+          CLIP_SECONDS: ${{ inputs.clip_seconds }
+          CLIP_AUTO_PUBLISH: ${{ inputs.publish }
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }
+          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }
+          VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'en' }
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }
+        run: python -m trendforge.clipper
+
+      - name: Upload real-footage clips and manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trendforge-clips-${{ github.run_number }
+          path: |
+            outputs/clips/*.mp4
+            outputs/clips/clip-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
