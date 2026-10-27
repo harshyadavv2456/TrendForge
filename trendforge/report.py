@@ -22,8 +22,8 @@ def render_report(
         "",
         "## Highest-ranked opportunities",
         "",
-        "| Score | Creator | Video | Estimated views/hour | Regions |",
-        "|---:|---|---|---:|---|",
+        "| Score | Commercial fit* | Creator | Video | Estimated views/hour | Regions |",
+        "|---:|---:|---|---|---:|---|",
     ]
     for item in candidates[:12]:
         snippet = item.get("snippet", {})
@@ -34,7 +34,7 @@ def render_report(
         video_id = str(item.get("id", ""))
         url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
         lines.append(
-            f"| {float(trend.get('score', 0)):.1f} | {creator} | [{title}]({url}) | "
+            f"| {float(trend.get('score', 0)):.1f} | {float(trend.get('commercial_fit_proxy', 0)):.0f}/100 | {creator} | [{title}]({url}) | "
             f"{float(trend.get('views_per_hour_estimate', 0)):,.0f} | {', '.join(item.get('regions', []))} |"
         )
     if not candidates:
@@ -57,7 +57,7 @@ def render_report(
     lines.extend([
         "",
         "---",
-        "Trend scores are heuristics based on public metadata, not forecasts of views or revenue. Source footage is not downloaded or reused.",
+        "*Commercial fit is a title/category heuristic, not actual earnings or CPM/RPM. Trend scores are not forecasts of views or revenue. Source footage is not downloaded or reused.",
     ])
     return "\n".join(lines) + "\n"
 
