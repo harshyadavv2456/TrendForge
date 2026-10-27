@@ -7,7 +7,6 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-import requests
 from PIL import Image, ImageDraw, ImageFont
 
 from .config import Settings
@@ -106,17 +105,25 @@ def _make_slide(
     # Source metadata, not an assertion about unobserved video contents.
     snippet = candidate.get("snippet", {})
     stats = candidate.get("statistics", {})
-    views = int(stats.get("viewCount", 0) or 0)
     discovery = candidate.get("discovery", {})
-    source_rank = int(discovery.get("source_rank", 0) or 0)
-    source_title = str(snippet.get("title", "Creator trend")).strip()
-    source_creator = str(snippet.get("channelTitle", "Creator")).strip()
-    draw.text((74, 1270), "OBSERVED SIGNAL", font=_font(23, True), fill=(*accent, 255))
-    _draw_wrapped(draw, source_creator[:65], (74, 1314), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
-    _draw_wrapped(draw, source_title[:130], (74, 1368), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
-    metric_text = f"{views:,} public views  •  Source position {source_rank}" if source_rank else f"{views:,} public views"
-    draw.text((74, 1733), metric_text, font=_font(23, True), fill=(220, 229, 246))
-    draw.text((74, 1810), "ORIGINAL COMMENTARY  •  SOURCE LINK IN DESCRIPTION", font=_font(19, True), fill=(155, 171, 205))
+    if discovery.get("source_kind") == "demo":
+        draw.text((74, 1270), "OFFLINE QUALITY DEMO", font=_font(23, True), fill=(*accent, 255))
+        _draw_wrapped(draw, "TrendForge Original Sample", (74, 1314), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
+        _draw_wrapped(draw, "Illustrative script only — this is not live YouTube trend data.", (74, 1368), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
+        metric_text = "GROQ SCRIPTING CONFIGURED SEPARATELY  •  LOCAL TTS"
+        footer_text = "DEMO VIDEO  •  NOT A LIVE TREND REPORT"
+    else:
+        views = int(stats.get("viewCount", 0) or 0)
+        source_rank = int(discovery.get("source_rank", 0) or 0)
+        source_title = str(snippet.get("title", "Creator trend")).strip()
+        source_creator = str(snippet.get("channelTitle", "Creator")).strip()
+        draw.text((74, 1270), "OBSERVED SIGNAL", font=_font(23, True), fill=(*accent, 255))
+        _draw_wrapped(draw, source_creator[:65], (74, 1314), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
+        _draw_wrapped(draw, source_title[:130], (74, 1368), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
+        metric_text = f"{views:,} public views  •  Source position {source_rank}" if source_rank else f"{views:,} public views"
+        footer_text = "ORIGINAL COMMENTARY  •  SOURCE LINK IN DESCRIPTION"
+    draw.text((74, 1733), metric_text[:78], font=_font(23, True), fill=(220, 229, 246))
+    draw.text((74, 1810), footer_text, font=_font(19, True), fill=(155, 171, 205))
     img.save(path, "PNG", optimize=True)
 
 
@@ -181,7 +188,7 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     workdir.mkdir(parents=True, exist_ok=True)
     outdir.mkdir(parents=True, exist_ok=True)
     video_id = str(candidate.get("id", "trend"))[:32]
-    audio_path = workdir / f"{video_id}.mp3"
+    audio_path = workdir / f"{video_id}.wav"
     srt_path = workdir / f"{video_id}.srt"
     concat_path = workdir / f"{video_id}-slides.txt"
     silent_path = workdir / f"{video_id}-silent.mp4"
@@ -189,29 +196,21 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     scenes = script["scenes"]
     narration = " ".join(scene["narration"] for scene in scenes)
 
-    # TTS sends only our original script, not other creators' video/audio.
+    # Local eSpeak NG keeps narration completely offline and free; no TTS API is called.
     try:
-        response = requests.post(
-            "https://api.openai.com/v1/audio/speech",
-            headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
-            json={
-                "model": settings.tts_model,
-                "voice": settings.tts_voice,
-                "input": narration,
-                "instructions": settings.tts_instructions,
-                "response_format": "mp3",
-            },
+        spoken = subprocess.run(
+            ["espeak-ng", "-v", settings.tts_voice, "-s", "165", "-w", str(audio_path), narration],
+            check=True,
+            capture_output=True,
+            text=True,
             timeout=120,
         )
-    except requests.RequestException as exc:
-        raise RenderError(f"OpenAI text-to-speech network error: {exc}") from exc
-    if response.status_code >= 400:
-        try:
-            detail = response.json().get("error", {}).get("message", response.text[:300])
-        except ValueError:
-            detail = response.text[:300]
-        raise RenderError(f"OpenAI text-to-speech returned HTTP {response.status_code}: {detail}")
-    audio_path.write_bytes(response.content)
+    except FileNotFoundError as exc:
+        raise RenderError("espeak-ng is required for free local narration. Install it with: sudo apt-get install espeak-ng") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RenderError("Local eSpeak NG narration timed out.") from exc
+    except subprocess.CalledProcessError as exc:
+        raise RenderError(f"Local eSpeak NG narration failed: {(exc.stderr or exc.stdout or '')[-800:]}") from exc
     duration = _probe_duration(audio_path)
 
     slide_paths = []
@@ -263,6 +262,6 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
         "duration_seconds": round(duration, 2),
         "size_bytes": final_path.stat().st_size,
         "resolution": f"{WIDTH}x{HEIGHT}",
-        "audio": "AI-generated narration",
+        "audio": "locally synthesized eSpeak NG narration",
         "visuals": "original motion graphics",
     }
