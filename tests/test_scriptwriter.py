@@ -9,5 +9,5 @@ def test_json_extraction_from_plain_response() -> None:
 
 
 def test_json_extraction_from_markdown_fence() -> None:
-    data = _extract_json('\\x60\\x60\\x60json\n{"angle":"A useful insight"}\n\\x60\\x60\\x60')
+    data = _extract_json('```json\n{"angle":"A useful insight"}\n```')
     assert data["angle"] == "A useful insight"
