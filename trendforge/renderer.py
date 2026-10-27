@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import subprocess
 import sys
@@ -17,6 +18,7 @@ WIDTH, HEIGHT, FPS = 1080, 1920, 30
 FONT_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 ACCENTS = [(41, 227, 191), (139, 114, 255), (255, 112, 112), (255, 198, 77), (87, 173, 255)]
+LOG = logging.getLogger(__name__)
 
 
 class RenderError(RuntimeError):
@@ -225,13 +227,14 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     scenes = script["scenes"]
     narration = " ".join(scene["narration"] for scene in scenes)
 
-    # Piper synthesizes narration locally using an open neural voice model; no TTS API is called.
-    # Download the model only when absent; GitHub Actions caches this directory between runs.
+    # Prefer Piper neural TTS; if Hugging Face temporarily rate-limits a model download,
+    # fall back to offline eSpeak NG rather than calling any paid TTS endpoint.
     piper_dir.mkdir(parents=True, exist_ok=True)
     model_path = piper_dir / f"{settings.tts_voice}.onnx"
     model_config_path = piper_dir / f"{settings.tts_voice}.onnx.json"
-    if not model_path.is_file() or not model_config_path.is_file():
-        try:
+    audio_method = "locally synthesized Piper neural narration"
+    try:
+        if not model_path.is_file() or not model_config_path.is_file():
             subprocess.run(
                 [
                     sys.executable, "-m", "piper.download_voices",
@@ -242,13 +245,6 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
                 text=True,
                 timeout=300,
             )
-        except FileNotFoundError as exc:
-            raise RenderError("Piper TTS is required for free local narration. Install the piper-tts Python package.") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise RenderError("Downloading the Piper voice model timed out.") from exc
-        except subprocess.CalledProcessError as exc:
-            raise RenderError(f"Could not download Piper voice model: {(exc.stderr or exc.stdout or '')[-1200:]}") from exc
-    try:
         subprocess.run(
             [
                 "piper",
@@ -262,12 +258,22 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
             text=True,
             timeout=240,
         )
-    except FileNotFoundError as exc:
-        raise RenderError("Piper TTS is required for free local narration. Install the piper-tts Python package.") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RenderError("Local Piper neural narration timed out.") from exc
-    except subprocess.CalledProcessError as exc:
-        raise RenderError(f"Local Piper narration failed: {(exc.stderr or exc.stdout or '')[-1200:]}") from exc
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as piper_error:
+        LOG.warning("Piper neural TTS unavailable; falling back to offline eSpeak NG: %s", str(piper_error)[:400])
+        try:
+            subprocess.run(
+                ["espeak-ng", "-v", "en-us+m3", "-s", "165", "-w", str(audio_path), narration],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            audio_method = "locally synthesized eSpeak NG fallback narration (Piper model unavailable)"
+        except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as fallback_error:
+            raise RenderError(
+                "Both Piper neural TTS and offline eSpeak NG failed. Check piper-tts, voice-model access, and espeak-ng installation. "
+                + str(fallback_error)[:500]
+            ) from fallback_error
     duration = _probe_duration(audio_path)
 
     slide_paths = []
@@ -315,6 +321,6 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
         "duration_seconds": round(duration, 2),
         "size_bytes": final_path.stat().st_size,
         "resolution": f"{WIDTH}x{HEIGHT}",
-        "audio": "locally synthesized Piper neural narration",
+        "audio": audio_method,
         "visuals": "original motion graphics",
     }
