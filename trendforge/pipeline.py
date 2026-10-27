@@ -137,7 +137,7 @@ def run() -> int:
             for candidate in eligible[:4]:
                 source_id = str(candidate.get("id", ""))
                 if _recently_used(state, source_id, history_days=settings.history_retention_days):
-                    errors.append(f"Skipped {source_id}: source video was used in the previous 7 days.")
+                    errors.append("Skipped a candidate: its source was used in the previous 7 days.")
                     continue
                 try:
                     candidate_script = generate_script(settings, candidate)
@@ -145,13 +145,13 @@ def run() -> int:
                     if _recently_used(
                         state, source_id, fingerprint, history_days=settings.history_retention_days
                     ):
-                        errors.append(f"Skipped {source_id}: generated narration duplicates recent content.")
+                        errors.append("Skipped a candidate: generated narration duplicates recent content.")
                         continue
                     chosen, script = candidate, candidate_script
                     break
                 except ScriptGenerationError as exc:
-                    errors.append(f"Script rejected for {source_id}: {exc}")
-                    LOG.warning("Candidate %s rejected: %s", source_id, exc)
+                    errors.append(f"Script rejected by validation: {exc}")
+                    LOG.warning("Candidate script rejected by validation: %s", exc)
 
             if chosen is None or script is None:
                 status = "NO PUBLISH"
@@ -161,11 +161,7 @@ def run() -> int:
                 )
             else:
                 discovery = chosen.get("discovery", {})
-                LOG.info(
-                    "Rendering original Short from %s (source position %s)",
-                    discovery.get("source_label", "YouTube discovery"),
-                    discovery.get("source_rank", "unknown"),
-                )
+                LOG.info("Rendering original Short from the selected native-ordered candidate.")
                 render_result = render_short(settings, chosen, script)
                 preview = str(render_result["path"])
                 LOG.info(
