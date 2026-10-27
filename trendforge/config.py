@@ -42,7 +42,7 @@ class Settings:
     youtube_refresh_token: str
     auto_publish: bool
     max_uploads_per_day: int
-    min_trend_score: float
+    max_source_age_days: int
     max_candidates: int
     max_searches_per_run: int
     max_creator_channels_per_run: int
@@ -83,7 +83,7 @@ class Settings:
             youtube_refresh_token=os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip(),
             auto_publish=_bool("AUTO_PUBLISH", False),
             max_uploads_per_day=_int("MAX_UPLOADS_PER_DAY", 2, 0, 10),
-            min_trend_score=float(os.getenv("MIN_TREND_SCORE", "42")),
+            max_source_age_days=_int("MAX_SOURCE_AGE_DAYS", 14, 1, 30),
             max_candidates=_int("MAX_CANDIDATES", 35, 5, 100),
             max_searches_per_run=_int("MAX_SEARCHES_PER_RUN", 4, 1, 10),
             max_creator_channels_per_run=_int("MAX_CREATOR_CHANNELS_PER_RUN", 4, 1, 10),
