@@ -146,27 +146,57 @@ def _probe_duration(path: Path) -> float:
     return duration
 
 
+def _ass_clock(seconds: float) -> str:
+    centiseconds = max(0, int(round(seconds * 100)))
+    hours, centiseconds = divmod(centiseconds, 360_000)
+    minutes, centiseconds = divmod(centiseconds, 6_000)
+    secs, centiseconds = divmod(centiseconds, 100)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{centiseconds:02d}"
+
+
 def _make_subtitles(scenes: list[dict[str, str]], duration: float, path: Path) -> None:
+    """Write styled ASS captions with explicit mobile-safe positioning."""
+    header = [
+        "[Script Info]",
+        "Title: TrendForge Original Captions",
+        "ScriptType: v4.00+",
+        "WrapStyle: 2",
+        "ScaledBorderAndShadow: yes",
+        f"PlayResX: {WIDTH}",
+        f"PlayResY: {HEIGHT}",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        "Style: Default,DejaVu Sans,34,&H00FFFFFF,&H0000FFFF,&H00101522,&H90060917,-1,0,0,0,100,100,0,0,3,2,0,2,72,72,440,1",
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+    ]
     total_words = max(1, sum(len(s["narration"].split()) for s in scenes))
     cursor = 0.0
-    blocks = []
-    subtitle_index = 1
+    entries: list[str] = []
     for scene in scenes:
         scene_words = scene["narration"].split()
         scene_duration = duration * len(scene_words) / total_words
-        chunks = [scene_words[i : i + 11] for i in range(0, len(scene_words), 11)]
+        chunks = [scene_words[i : i + 8] for i in range(0, len(scene_words), 8)]
         chunk_words = max(1, sum(len(chunk) for chunk in chunks))
         local = cursor
         for chunk in chunks:
             part_duration = scene_duration * len(chunk) / chunk_words
-            start = local
-            end = min(duration, local + part_duration)
-            line = " ".join(chunk).replace("--", "—")
-            blocks.append(f"{subtitle_index}\n{_clock(start)} --> {_clock(max(start + 0.5, end))}\n{line}\n")
-            subtitle_index += 1
-            local = end
+            start_time = local
+            end_time = min(duration, local + part_duration)
+            clean_words = [word.replace("{", "").replace("}", "").replace("\\", "") for word in chunk]
+            if len(clean_words) > 6:
+                split_at = max(3, len(clean_words) // 2)
+                caption = " ".join(clean_words[:split_at]) + r"\N" + " ".join(clean_words[split_at:])
+            else:
+                caption = " ".join(clean_words)
+            entries.append(
+                f"Dialogue: 0,{_ass_clock(start_time)},{_ass_clock(max(start_time + 0.5, end_time))},Default,,0,0,0,,{caption}"
+            )
+            local = end_time
         cursor += scene_duration
-    path.write_text("\n".join(blocks), encoding="utf-8")
+    path.write_text("\n".join(header + entries) + "\n", encoding="utf-8")
 
 
 def _run(command: list[str], label: str, timeout: int = 240) -> None:
@@ -186,7 +216,7 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     outdir.mkdir(parents=True, exist_ok=True)
     video_id = str(candidate.get("id", "trend"))[:32]
     audio_path = workdir / f"{video_id}.wav"
-    srt_path = workdir / f"{video_id}.srt"
+    subtitle_path = workdir / f"{video_id}.ass"
     concat_path = workdir / f"{video_id}-slides.txt"
     silent_path = workdir / f"{video_id}-silent.mp4"
     final_path = outdir / f"trendforge-{video_id}.mp4"
@@ -223,7 +253,7 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     # FFmpeg concat demuxer needs a repeated final file to honor the previous duration.
     lines.append(f"file '{slide_paths[-1].as_posix()}'")
     concat_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    _make_subtitles(scenes, duration, srt_path)
+    _make_subtitles(scenes, duration, subtitle_path)
 
     _run(
         [
@@ -235,11 +265,7 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
         ],
         "Motion-graphic rendering",
     )
-    subtitle_filter = (
-        f"subtitles={srt_path.as_posix()}:force_style="
-        "'FontName=DejaVu Sans,FontSize=25,PrimaryColour=&H00FFFFFF,OutlineColour=&H00101522,"
-        "BorderStyle=3,Outline=3,Shadow=0,MarginV=330,Alignment=2,WrapStyle=2'"
-    )
+    subtitle_filter = f"subtitles={subtitle_path.as_posix()}"
     _run(
         [
             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
