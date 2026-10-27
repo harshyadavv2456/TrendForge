@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+client_secret.json
+token.json
+*.pem
+*.key
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+outputs/*
+!outputs/.gitkeep
+.tmp/
+.DS_Store
