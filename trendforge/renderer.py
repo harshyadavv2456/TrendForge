@@ -216,6 +216,7 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     outdir.mkdir(parents=True, exist_ok=True)
     video_id = str(candidate.get("id", "trend"))[:32]
     audio_path = workdir / f"{video_id}.wav"
+    piper_dir = Path.home() / ".cache" / "piper"
     subtitle_path = workdir / f"{video_id}.ass"
     concat_path = workdir / f"{video_id}-slides.txt"
     silent_path = workdir / f"{video_id}-silent.mp4"
@@ -223,21 +224,29 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
     scenes = script["scenes"]
     narration = " ".join(scene["narration"] for scene in scenes)
 
-    # Local eSpeak NG keeps narration completely offline and free; no TTS API is called.
+    # Piper synthesizes narration locally using an open neural voice model; no TTS API is called.
+    # The model is downloaded once to the user cache and can be restored from GitHub Actions cache.
+    piper_dir.mkdir(parents=True, exist_ok=True)
     try:
-        spoken = subprocess.run(
-            ["espeak-ng", "-v", settings.tts_voice, "-s", "165", "-w", str(audio_path), narration],
+        subprocess.run(
+            [
+                "piper",
+                "--model", settings.tts_voice,
+                "--download-dir", str(piper_dir),
+                "--output_file", str(audio_path),
+            ],
+            input=narration,
             check=True,
             capture_output=True,
             text=True,
-            timeout=120,
+            timeout=240,
         )
     except FileNotFoundError as exc:
-        raise RenderError("espeak-ng is required for free local narration. Install it with: sudo apt-get install espeak-ng") from exc
+        raise RenderError("Piper TTS is required for free local narration. Install the piper-tts Python package.") from exc
     except subprocess.TimeoutExpired as exc:
-        raise RenderError("Local eSpeak NG narration timed out.") from exc
+        raise RenderError("Local Piper neural narration timed out.") from exc
     except subprocess.CalledProcessError as exc:
-        raise RenderError(f"Local eSpeak NG narration failed: {(exc.stderr or exc.stdout or '')[-800:]}") from exc
+        raise RenderError(f"Local Piper narration failed: {(exc.stderr or exc.stdout or '')[-1200:]}") from exc
     duration = _probe_duration(audio_path)
 
     slide_paths = []
@@ -285,6 +294,6 @@ def render_short(settings: Settings, candidate: dict[str, Any], script: dict[str
         "duration_seconds": round(duration, 2),
         "size_bytes": final_path.stat().st_size,
         "resolution": f"{WIDTH}x{HEIGHT}",
-        "audio": "locally synthesized eSpeak NG narration",
+        "audio": "locally synthesized Piper neural narration",
         "visuals": "original motion graphics",
     }
