@@ -8,6 +8,13 @@ cd /Users/harshyadav/TrendForge
 source .venv/bin/activate
 export TRENDFORGE_LOG="/Users/harshyadav/TrendForge/logs/autonomous-$(date +%Y%m%d-%H%M%S).log"
 
+# Load local environment variables (API keys, OAuth tokens, etc.)
+if [ -f .env ]; then
+    set -a
+    . .env
+    set +a
+fi
+
 mkdir -p logs outputs/source outputs/series data
 
 log() {
@@ -28,6 +35,7 @@ else
         log "ERROR: Discovery failed. Exiting."
         exit 1
     }
+    # Parse discovery output into shell variables via a temp file
     python - <<'PY' 2>>"$TRENDFORGE_LOG"
 import json, os
 with open("outputs/discovery.json") as f:
@@ -35,23 +43,19 @@ with open("outputs/discovery.json") as f:
 if not cands:
     raise SystemExit("No trending candidates found")
 top = cands[0]
-print(f"SOURCE_URL={top['url']}")
-print(f"SOURCE_TITLE={top['title']}")
-print(f"SOURCE_CREATOR={top['creator']}")
+with open("/tmp/trendforge_source.env", "w") as out:
+    out.write(f'SOURCE_URL="{top["url"]}"\n')
+    out.write(f'SOURCE_TITLE="{top["title"]}"\n')
+    out.write(f'SOURCE_CREATOR="{top["creator"]}"\n')
 PY
-    # Read the exported variables back
+    if [ ! -f /tmp/trendforge_source.env ]; then
+        log "ERROR: Could not parse discovery output. Exiting."
+        exit 1
+    fi
     set -a
-    . <(python - <<'PY'
-import json
-with open("outputs/discovery.json") as f:
-    cands = json.load(f)
-top = cands[0]
-print(f"SOURCE_URL={top['url']}")
-print(f"SOURCE_TITLE={top['title']}")
-print(f"SOURCE_CREATOR={top['creator']}")
-PY
-)
+    . /tmp/trendforge_source.env
     set +a
+    rm -f /tmp/trendforge_source.env
 fi
 
 log "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
