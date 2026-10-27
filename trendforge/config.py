@@ -91,7 +91,7 @@ class Settings:
             search_queries=queries,
             creator_handles=handles,
             groq_model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b").strip(),
-            tts_voice=os.getenv("LOCAL_TTS_VOICE", "en-us+m3").strip(),
+            tts_voice=os.getenv("LOCAL_TTS_VOICE", "en_US-lessac-medium").strip(),
             video_language=os.getenv("VIDEO_LANGUAGE", "en").strip(),
             video_category_id=os.getenv("VIDEO_CATEGORY_ID", "24").strip(),
             video_privacy_status=os.getenv("VIDEO_PRIVACY_STATUS", "public").strip().lower(),
