@@ -43,6 +43,6 @@ def test_candidate_summary_uses_raw_api_values_without_custom_metrics() -> None:
     summary = candidate_summary(video)
     assert summary["url"] == "https://www.youtube.com/watch?v=abc123"
     assert summary["creator"] == "Example Creator"
-    assert summary["views"] == 1_200_000
+    assert "views" not in summary
     assert summary["discovery"]["source_kind"] == "creator_latest"
     assert "trend_score" not in summary
