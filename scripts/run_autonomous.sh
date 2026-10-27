@@ -1,7 +1,7 @@
 #!/bin/bash
 # TrendForge Autonomous Shorts — Local Runner (cache + retry + continuous)
 # Runs full pipeline: retry unpublished → discover → download → render → publish
-# Set up with cron to run every 2 hours for full autonomy.
+# Never crashes on non-critical errors; always renders from cache if discovery fails.
 set -eo pipefail
 
 cd /Users/harshyadav/TrendForge
@@ -51,7 +51,7 @@ done
 
 if [ ${#unpublished_parts[@]} -gt 0 ]; then
     log "Found ${#unpublished_parts[@]} unpublished clip(s), attempting publish..."
-    python - <<'PY' 2>>"$TRENDFORGE_LOG"
+    python - <<'PY' 2>>"$TRENDFORGE_LOG" || true
 import json, os, glob
 from pathlib import Path
 from trendforge.config import Settings
@@ -99,18 +99,15 @@ fi
 
 # ── Step 1: Discover trending YouTube candidates ──
 log "Step 1: Discovering trending candidates..."
-if [ -z "${YOUTUBE_API_KEY:-}" ]; then
-    log "WARNING: YOUTUBE_API_KEY not set. Skipping discovery (no new clips will be rendered)."
-    SKIP_DISCOVERY=1
-else
-    SKIP_DISCOVERY=0
-fi
+SOURCE_URL=""
+SOURCE_TITLE=""
+SOURCE_CREATOR=""
 
-if [ "$SKIP_DISCOVERY" -eq 0 ]; then
-    python -m trendforge.discover --count 5 --json > outputs/discovery.json 2>>"$TRENDFORGE_LOG" || {
-        log "WARNING: Discovery failed, will reuse cached source if available."
-    }
-    python - <<'PY' 2>>"$TRENDFORGE_LOG"
+if [ -z "${YOUTUBE_API_KEY:-}" ]; then
+    log "WARNING: YOUTUBE_API_KEY not set. Skipping discovery."
+else
+    python -m trendforge.discover --count 5 --json > outputs/discovery.json 2>>"$TRENDFORGE_LOG" && \
+    python - <<'PY' 2>>"$TRENDFORGE_LOG" || log "WARNING: Discovery parse failed, will use cached source."
 import json, os
 with open("outputs/discovery.json") as f:
     cands = json.load(f)
@@ -122,15 +119,13 @@ with open("/tmp/trendforge_source.env", "w") as out:
     out.write(f'SOURCE_TITLE="{top["title"]}"\n')
     out.write(f'SOURCE_CREATOR="{top["creator"]}"\n')
 PY
-    set -a
-    . /tmp/trendforge_source.env
-    set +a
-    rm -f /tmp/trendforge_source.env
-    log "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
-else
-    SOURCE_URL=""
-    SOURCE_TITLE=""
-    SOURCE_CREATOR=""
+    if [ -f /tmp/trendforge_source.env ]; then
+        set -a
+        . /tmp/trendforge_source.env
+        set +a
+        rm -f /tmp/trendforge_source.env
+        log "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
+    fi
 fi
 
 # ── Step 2: Download source video via yt-dlp (only if not already cached) ──
@@ -183,7 +178,7 @@ log "Series built successfully."
 # ── Step 4: Publish new Shorts to YouTube (if auto-publish enabled) ──
 if [ "${AUTO_PUBLISH:-false}" = "true" ] && [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ] && [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ]; then
     log "Step 4: Publishing new Shorts to YouTube..."
-    python - <<'PY' 2>>"$TRENDFORGE_LOG"
+    python - <<'PY' 2>>"$TRENDFORGE_LOG" || true
 import json, os
 from pathlib import Path
 from trendforge.config import Settings
