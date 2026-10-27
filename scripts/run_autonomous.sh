@@ -26,17 +26,25 @@ log "=== TrendForge autonomous run started ==="
 # ── Step 0: Retry publishing any previously rendered but unpublished clips ──
 log "Step 0: Checking for previously rendered unpublished clips..."
 PUBLISHED_STATE="data/published.json"
+PUBLISHED_PARTS=()
 if [ -f "$PUBLISHED_STATE" ]; then
-    mapfile -t PUBLISHED_PARTS < <(python3 -c "import json; d=json.load(open('$PUBLISHED_STATE')); print('\n'.join(d.get('published_parts', [])))")
-else
-    PUBLISHED_PARTS=()
+    while IFS= read -r line; do
+        [ -n "$line" ] && PUBLISHED_PARTS+=("$line")
+    done < <(python3 -c "import json; d=json.load(open('$PUBLISHED_STATE')); print('\n'.join(d.get('published_parts', [])))") || true
 fi
 
 unpublished_parts=()
 for part_file in outputs/series/part-*.mp4; do
     [ -f "$part_file" ] || continue
     part_name=$(basename "$part_file")
-    if [[ ! " ${PUBLISHED_PARTS[@]} " =~ " ${part_name} " ]]; then
+    found=0
+    for p in "${PUBLISHED_PARTS[@]}"; do
+        if [ "$p" = "$part_name" ]; then
+            found=1
+            break
+        fi
+    done
+    if [ "$found" -eq 0 ]; then
         unpublished_parts+=("$part_file")
     fi
 done
@@ -84,7 +92,7 @@ state_path.write_text(json.dumps(state, indent=2))
 if newly_published:
     print(f"Total newly published: {len(newly_published)}")
 PY
-    log "Publish retry complete."
+    log "Publishing complete."
 else
     log "No unpublished clips to publish."
 fi
@@ -216,10 +224,8 @@ for part_file in sorted(glob.glob("outputs/series/part-*.mp4")):
 state_path.write_text(json.dumps(state, indent=2))
 if newly_published:
     print(f"Total newly published: {len(newly_published)}")
-    log "Publishing complete."
-else:
-    log "No new parts to publish."
 PY
+    log "Publishing complete."
 else
     log "Step 4: Auto-publish disabled or OAuth not configured. Clips saved locally."
 fi
