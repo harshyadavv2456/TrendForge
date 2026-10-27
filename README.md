@@ -2,17 +2,17 @@
 
 **Autonomous, English-language creator-trend intelligence and original YouTube Shorts production — powered by GitHub Actions.**
 
-TrendForge monitors popular and newly published YouTube videos in the US, UK, Canada and Australia; ranks opportunities; develops an original commentary angle; writes and narrates a short script; renders an original vertical video; then uploads it to your channel when configured.
+TrendForge monitors popular charts in the US, UK, Canada and Australia, tracks selected creator channels' latest uploads, and discovers recent niche videos; it ranks opportunities; develops an original commentary angle; writes and narrates a short script; renders an original vertical video; then uploads it to your channel when configured.
 
 > **Rights-first design:** TrendForge discovers and analyzes public metadata. It does not download or republish other creators' videos, audio, captions or thumbnails. It creates original narrated motion-graphics videos and links its research sources in the description. Do not add unlicensed source footage.
 
 ## What runs automatically
 
-1. Fetch popular videos by region and recent videos matching a rotating creator/topic watchlist.
+1. Fetch YouTube popular charts by region, the latest uploads from a rotating list of actual creator channels, and recent videos matching broader niche searches.
 2. Calculate freshness, estimated view velocity, engagement and opportunity scores from public metadata.
 3. Ask the configured language model for an original, fact-constrained commentary script with a distinct insight, title, description, tags, hashtags and storyboard.
 4. Generate narration, original motion-graphic scene cards, timed captions and a vertical MP4 using FFmpeg.
-5. Run basic quality, deduplication, content-safety and daily-volume gates.
+5. Run basic script validation, source/content deduplication, metadata checks and daily-volume gates.
 6. Upload to the connected YouTube channel via the official resumable upload endpoint.
 7. Persist public trend history and publishing IDs, write a GitHub Actions summary, and retain the rendered MP4 as a short-lived workflow artifact.
 
