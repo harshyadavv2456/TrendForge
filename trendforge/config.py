@@ -79,7 +79,7 @@ class Settings:
             youtube_client_id=os.getenv("YOUTUBE_CLIENT_ID", "").strip(),
             youtube_client_secret=os.getenv("YOUTUBE_CLIENT_SECRET", "").strip(),
             youtube_refresh_token=os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip(),
-            auto_publish=_bool("AUTO_PUBLISH", False),
+            auto_publish=_bool("AUTO_PUBLISH", True),
             max_uploads_per_day=_int("MAX_UPLOADS_PER_DAY", 2, 0, 10),
             max_source_age_days=_int("MAX_SOURCE_AGE_DAYS", 14, 1, 30),
             max_candidates=_int("MAX_CANDIDATES", 35, 5, 100),
