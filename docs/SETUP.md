@@ -33,7 +33,7 @@ Never paste OAuth tokens or API secrets into GitHub issues, commit messages, sou
 1. Create a Groq account and an API key at https://console.groq.com/keys.
 2. Stay on the **Free Plan**; do not upgrade to a paid Developer plan.
 3. Add the key as repository secret GROQ_API_KEY. TrendForge calls Groq's OpenAI-compatible chat endpoint using the default model `openai/gpt-oss-20b`; you can change GROQ_MODEL to another currently available model with free-tier access.
-4. The pipeline uses Groq only for text generation. Narration is produced locally by eSpeak NG on the GitHub runner, so no TTS API is called.
+4. The pipeline uses Groq only for text generation. Narration is produced locally by Piper TTS on the GitHub runner using the MIT-licensed en_US-lessac-medium voice model, so no TTS API is called.
 
 Groq's Free Plan is not billed, and exceeding free-tier limits returns a rate-limit response rather than switching you to paid usage. Limits/models may change; check https://console.groq.com/docs/rate-limits and do not add payment details or upgrade if you want to keep the workflow free.
 
@@ -89,4 +89,4 @@ GitHub may delay scheduled jobs during periods of heavy load and automatically d
 - **Groq 401/404/429 error:** verify GROQ_API_KEY, that GROQ_MODEL is currently available to your account's free tier, and remaining free-tier limits. The workflow should skip/stop rather than use a paid model.
 - **FFmpeg subtitle error:** check that the runner installed FFmpeg with libass subtitle support.
 - **No video generated:** inspect the short-lived run artifact and summary; the source freshness window, deduplication window, script validation or daily upload cap may have prevented a post.
-- **eSpeak NG not found:** the rendering runner must install espeak-ng; local runs must install it with their package manager.
+- **Piper model/download error:** check that the piper-tts Python package is installed and that the runner can download the public voice model from Hugging Face. The local model is cached by GitHub Actions.
