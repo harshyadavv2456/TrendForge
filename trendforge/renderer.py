@@ -107,13 +107,14 @@ def _make_slide(
     snippet = candidate.get("snippet", {})
     stats = candidate.get("statistics", {})
     views = int(stats.get("viewCount", 0) or 0)
-    score = float(candidate.get("trend", {}).get("score", 0))
+    discovery = candidate.get("discovery", {})
+    source_rank = int(discovery.get("source_rank", 0) or 0)
     source_title = str(snippet.get("title", "Creator trend")).strip()
     source_creator = str(snippet.get("channelTitle", "Creator")).strip()
     draw.text((74, 1270), "OBSERVED SIGNAL", font=_font(23, True), fill=(*accent, 255))
     _draw_wrapped(draw, source_creator[:65], (74, 1314), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
     _draw_wrapped(draw, source_title[:130], (74, 1368), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
-    metric_text = f"{views:,} public views  •  Radar score {score:.0f}/100"
+    metric_text = f"{views:,} public views  •  Source position {source_rank}" if source_rank else f"{views:,} public views"
     draw.text((74, 1733), metric_text, font=_font(23, True), fill=(220, 229, 246))
     draw.text((74, 1810), "ORIGINAL COMMENTARY  •  SOURCE LINK IN DESCRIPTION", font=_font(19, True), fill=(155, 171, 205))
     img.save(path, "PNG", optimize=True)
