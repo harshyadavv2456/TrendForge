@@ -38,8 +38,8 @@ def _word_count(value: str) -> int:
 
 
 def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, Any]:
-    if not settings.openai_api_key:
-        raise ScriptGenerationError("OPENAI_API_KEY is required to generate original scripts.")
+    if not settings.groq_api_key:
+        raise ScriptGenerationError("GROQ_API_KEY is required to generate original scripts.")
     full_source = candidate_summary(candidate)
     # Keep the model prompt to the minimum facts needed for an original angle; raw counts
     # and creator descriptions are not sent to the external generation provider.
@@ -80,7 +80,7 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
             "title": "string, <= 90 characters, accurate and compelling",
             "angle": "one sentence explaining the distinct original insight",
             "quality_score": "integer 0-100, conservative self-assessment",
-            "narration_disclosure": "one sentence noting AI-assisted narration/graphics",
+            "narration_disclosure": "one sentence noting Groq-assisted script and local synthetic narration",
             "scenes": [
                 {
                     "headline": "short on-screen line",
@@ -94,7 +94,7 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
         },
     }
     payload = {
-        "model": settings.openai_model,
+        "model": settings.groq_model,
         "temperature": 0.8,
         "response_format": {"type": "json_object"},
         "messages": [
@@ -111,23 +111,23 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
     }
     try:
         response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {settings.openai_api_key}", "Content-Type": "application/json"},
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {settings.groq_api_key}", "Content-Type": "application/json"},
             json=payload,
             timeout=90,
         )
     except requests.RequestException as exc:
-        raise ScriptGenerationError(f"OpenAI script API network error: {exc}") from exc
+        raise ScriptGenerationError(f"Groq script API network error: {exc}") from exc
     if response.status_code >= 400:
         try:
             detail = response.json().get("error", {}).get("message", response.text[:300])
         except ValueError:
             detail = response.text[:300]
-        raise ScriptGenerationError(f"OpenAI script API returned HTTP {response.status_code}: {detail}")
+        raise ScriptGenerationError(f"Groq script API returned HTTP {response.status_code}: {detail}")
     try:
         raw = response.json()["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError) as exc:
-        raise ScriptGenerationError("Unexpected OpenAI chat completion response.") from exc
+        raise ScriptGenerationError("Unexpected Groq chat completion response.") from exc
     result = _extract_json(raw)
 
     scenes = result.get("scenes")
@@ -182,7 +182,7 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
     source_url = source["url"]
     if source_url not in description:
         description = f"{description}\n\nSource video and public metadata: {source_url}"
-    description += "\n\nOriginal commentary and custom motion graphics. AI-assisted narration/production.\n" + " ".join(hashtags[:4])
+    description += "\n\nOriginal commentary and custom motion graphics. Script drafted with Groq; narration synthesized locally.\n" + " ".join(hashtags[:4])
     description = description[:4800]
     return {
         "title": title,
