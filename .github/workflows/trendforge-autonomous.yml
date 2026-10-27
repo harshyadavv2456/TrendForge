@@ -10,18 +10,18 @@ on:
         required: false
         type: boolean
         default: false
-      max_clips:
-        description: Max clips to render per run
+      count:
+        description: Number of series parts
         required: false
         type: choice
-        options: ["1", "2", "3"]
-        default: "2"
-      clip_seconds:
-        description: Target clip duration in seconds
+        options: ["3", "5", "10"]
+        default: "5"
+      part_seconds:
+        description: Seconds per part
         required: false
         type: choice
-        options: ["15", "20", "30", "40", "50", "60"]
-        default: "30"
+        options: ["30", "45", "55"]
+        default: "55"
 
 permissions:
   contents: read
@@ -79,9 +79,8 @@ jobs:
         id: discover
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
-          YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator' }}
         run: |
+          mkdir -p outputs
           if [ -z "$YOUTUBE_API_KEY" ]; then
             echo "YOUTUBE_API_KEY not set; falling back to demo source video."
             echo "source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw" >> $GITHUB_OUTPUT
@@ -89,9 +88,9 @@ jobs:
             echo "source_creator=Jawed Karim" >> $GITHUB_OUTPUT
             exit 0
           fi
-          python -m trendforge.discover --count 5 --json > outputs/discovery.json
+          python -m trendforge.discover --count "${{ inputs.count }}" --json > outputs/discovery.json
           python - <<'PY'
-          import json
+          import json, os
           with open("outputs/discovery.json") as f:
               cands = json.load(f)
           if not cands:
@@ -120,32 +119,71 @@ jobs:
             "$SOURCE_URL"
           ls -la outputs/source/
 
-      - name: Render vertical Shorts from real footage
+      - name: Build Shorts series (connected parts, fast PART overlay)
         env:
           SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
           SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
           SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
-          SOURCE_RIGHTS_CONFIRMED: "true"
-          CLIP_COUNT: ${{ inputs.max_clips }}
-          CLIP_SECONDS: ${{ inputs.clip_seconds }}
-          CLIP_AUTO_PUBLISH: ${{ inputs.publish }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
-          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
-          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
-          VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'en' }}
+        run: |
+          python -m trendforge.series \
+            --input outputs/source/source-video.mp4 \
+            --output-dir outputs/series \
+            --source-url "$SOURCE_VIDEO_URL" \
+            --title "$SOURCE_VIDEO_TITLE" \
+            --creator "$SOURCE_VIDEO_CREATOR" \
+            --rights-confirmed \
+            --count ${{ inputs.count }} \
+            --part-seconds ${{ inputs.part_seconds }} \
+            --overlay-seconds 2
+
+      - name: Publish Shorts to YouTube
+        if: ${{ inputs.publish == 'true' }}
+        env:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: python -m trendforge.clipper --input outputs/source/source-video.mp4 --output outputs/clips
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
+          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
+          VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'en' }}
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from trendforge.config import Settings
+          from trendforge.publisher import upload_short
 
-      - name: Upload clips and manifest as artifact
+          settings = Settings.from_env()
+          manifest_path = Path("outputs/series/series-manifest.json")
+          manifest = json.loads(manifest_path.read_text())
+          source = manifest["source"]
+
+          for part in manifest["parts"]:
+              p = Path(part["path"])
+              script = {
+                  "title": f"{source['title']} | Part {part['part']}/{part['total']}"[:90],
+                  "description": (
+                      f"{source['title']} — Part {part['part']} of {part['total']} from {source['creator']}.\n\n"
+                      f"Source video: {source['url']}\n\n"
+                      "Original footage clipped into vertical Shorts with attribution."
+                  )[:4800],
+                  "tags": ["shorts", "highlight", "clip", source["creator"][:40]],
+                  "source": {
+                      "url": source["url"],
+                      "creator": source["creator"],
+                      "title": source["title"],
+                  },
+              }
+              result = upload_short(settings, p, script, publish=True)
+              print(f"Part {part['part']}: {result['url']} ({result['privacy_status']})")
+          PY
+
+      - name: Upload series parts and manifest as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trendforge-autonomous-clips-${{ github.run_number }}
+          name: trendforge-series-parts-${{ github.run_number }}
           path: |
-            outputs/clips/*.mp4
-            outputs/clips/clip-manifest.json
+            outputs/series/part-*.mp4
+            outputs/series/series-manifest.json
           if-no-files-found: ignore
           retention-days: 7
