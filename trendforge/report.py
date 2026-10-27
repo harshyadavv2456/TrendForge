@@ -22,12 +22,11 @@ def render_report(
         "",
         "## Current candidates (YouTube's native chart/search ordering)",
         "",
-        "| Source order | Region | Creator | Video | Public views | Published (UTC) |",
-        "|---|---|---|---|---:|---|",
+        "| Source order | Region | Creator | Video | Published (UTC) |",
+        "|---|---|---|---|---|",
     ]
     for item in candidates[:12]:
         snippet = item.get("snippet", {})
-        stats = item.get("statistics", {})
         discovery = item.get("discovery", {})
         title = str(snippet.get("title", "Untitled")).replace("|", "\\|").replace("[", "\\[").replace("]", "\\]")
         creator = str(snippet.get("channelTitle", "Unknown")).replace("|", "\\|")
@@ -37,13 +36,12 @@ def render_report(
         region = str(discovery.get("region") or "—")
         video_id = str(item.get("id", ""))
         url = f"https://www.youtube.com/watch?v={video_id}" if video_id else ""
-        views = int(stats.get("viewCount", 0) or 0)
         published = str(snippet.get("publishedAt", "—"))[:19].replace("T", " ")
         lines.append(
-            f"| {source} | {region} | {creator} | [{title}]({url}) | {views:,} | {published} |"
+            f"| {source} | {region} | {creator} | [{title}]({url}) | {published} |"
         )
     if not candidates:
-        lines.append("| — | — | — | No candidates returned | — | — |")
+        lines.append("| — | — | — | No candidates returned | — |")
     if uploaded:
         lines.extend([
             "",
@@ -62,7 +60,7 @@ def render_report(
     lines.extend([
         "",
         "---",
-        "Public view counts are shown as returned by YouTube. TrendForge does not calculate custom cross-channel trend scores or infer creator revenue. Source footage is not downloaded or reused.",
+        "TrendForge requests only the metadata needed for source discovery, does not cache public view counts or calculate cross-channel metrics, and never downloads or reuses source footage.",
     ])
     return "\n".join(lines) + "\n"
 
