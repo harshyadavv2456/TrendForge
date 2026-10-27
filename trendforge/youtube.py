@@ -83,7 +83,7 @@ def fetch_candidates(settings: Settings, state: dict[str, Any]) -> list[dict[str
             settings,
             "videos",
             {
-                "part": "snippet,statistics,contentDetails",
+                "part": "snippet,contentDetails",
                 "chart": "mostPopular",
                 "regionCode": region,
                 "maxResults": 25,
@@ -238,17 +238,12 @@ def public_video_url(video_id: str) -> str:
 def candidate_summary(video: dict[str, Any]) -> dict[str, Any]:
     """Expose the original API fields and source context, not derived performance metrics."""
     snippet = video.get("snippet", {})
-    stats = video.get("statistics", {})
     return {
         "video_id": str(video.get("id", "")),
         "title": str(snippet.get("title", "")),
         "creator": str(snippet.get("channelTitle", "")),
         "url": public_video_url(str(video.get("id", ""))),
         "published_at": snippet.get("publishedAt"),
-        "views": int(stats.get("viewCount", 0) or 0),
-        "likes": int(stats.get("likeCount", 0) or 0),
-        "comments": int(stats.get("commentCount", 0) or 0),
-        "description": str(snippet.get("description", ""))[:1200],
         "discovery": video.get("discovery", {}),
         "category_id": str(snippet.get("categoryId", "")),
     }
