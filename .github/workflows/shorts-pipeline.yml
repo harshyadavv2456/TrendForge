@@ -34,7 +34,7 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
+          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'true' }}
         run: |
           missing=""
           [ -n "$YOUTUBE_API_KEY" ] || missing="$missing YOUTUBE_API_KEY"
