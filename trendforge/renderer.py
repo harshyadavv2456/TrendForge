@@ -104,7 +104,6 @@ def _make_slide(
 
     # Source metadata, not an assertion about unobserved video contents.
     snippet = candidate.get("snippet", {})
-    stats = candidate.get("statistics", {})
     discovery = candidate.get("discovery", {})
     if discovery.get("source_kind") == "demo":
         draw.text((74, 1270), "OFFLINE QUALITY DEMO", font=_font(23, True), fill=(*accent, 255))
