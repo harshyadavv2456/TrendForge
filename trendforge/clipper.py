@@ -487,7 +487,7 @@ def run_clipper(source: Path, output_dir: Path, *, title: str, creator: str, sou
             transcript = []
         candidates = build_candidates(float(metadata["duration_seconds"]), clip_seconds, transcript, cuts)
         ranked = rank_with_groq(candidates, groq_api_key, model)
-        selected = _select_non_overlapping(ranked, max(1, min(count, 5)))
+        selected = _select_non_overlapping(ranked, max(1, count))
         if not selected:
             raise ClipError("No valid clip windows were found.")
         outputs = []
