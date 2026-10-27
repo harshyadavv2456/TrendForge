@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime, timezone
 from typing import Any
 
@@ -52,7 +53,10 @@ def score_video(
         "entrepreneur", "experiment", "gaming", "science", "review", "strategy",
         "record", "building", "million", "surprise", "world's", "worlds",
     )
-    topic_fit = min(100.0, 38.0 + sum(10 for term in high_value_terms if term in title))
+    def contains_term(term: str) -> bool:
+        return re.search(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)", title) is not None
+
+    topic_fit = min(100.0, 38.0 + sum(10 for term in high_value_terms if contains_term(term)))
     if category_id in {"20", "22", "23", "24", "28"}:
         topic_fit = min(100.0, topic_fit + 10.0)
 
@@ -63,7 +67,7 @@ def score_video(
         "startup", "entrepreneur", "productivity", "marketing", "review", "tools",
         "creator economy", "sponsor", "camera", "gear", "investing", "saas",
     )
-    commercial_fit = min(100.0, 28.0 + sum(13 for term in commercial_terms if term in title))
+    commercial_fit = min(100.0, 28.0 + sum(13 for term in commercial_terms if contains_term(term)))
     if category_id in {"26", "27", "28"}:
         commercial_fit = min(100.0, commercial_fit + 15.0)
 
