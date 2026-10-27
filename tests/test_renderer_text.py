@@ -37,7 +37,7 @@ def test_slide_render_creates_vertical_graphic(tmp_path) -> None:
 def test_subtitle_timing_covers_all_scene_text(tmp_path) -> None:
     from trendforge.renderer import _make_subtitles
 
-    output = tmp_path / "captions.srt"
+    output = tmp_path / "captions.ass"
     _make_subtitles(
         [
             {"narration": "First scene shows one idea."},
@@ -47,6 +47,8 @@ def test_subtitle_timing_covers_all_scene_text(tmp_path) -> None:
         output,
     )
     rendered = output.read_text(encoding="utf-8")
+    assert "[V4+ Styles]" in rendered
+    assert "Dialogue:" in rendered
     assert "First scene" in rendered
     assert "Second scene" in rendered
-    assert "00:00:20,000" in rendered or "00:00:19," in rendered
+    assert "0:00:20.00" in rendered or "0:00:19." in rendered
