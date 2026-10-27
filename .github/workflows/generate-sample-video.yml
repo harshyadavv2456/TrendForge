@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: trendforge-sample-video
+  group: trendforge-sample-video-v2
   cancel-in-progress: true
 
 jobs:
@@ -35,7 +35,6 @@ jobs:
 
       - name: Install completely local rendering tools
         run: |
-          sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
           ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
 
