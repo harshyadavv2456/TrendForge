@@ -63,20 +63,20 @@ Under **Settings → Secrets and variables → Actions → Variables**, add:
 
 Other supported variables are listed in CONFIGURATION.md. If an optional variable is absent, the workflow uses its default.
 
-## 6. Enable Actions and run the first preview
+## 6. Enable Actions and choose how to launch
 
-1. Under **Settings → Actions → General**, ensure Actions are allowed for the repository. Workflow permissions must allow the workflow's GITHUB_TOKEN to write repository contents so it can update data/state.json. Do not grant broad organization permissions unnecessarily.
+1. Under **Settings → Actions → General**, ensure Actions are allowed for the repository. Workflow permissions must allow the workflow's GITHUB_TOKEN to write repository contents. The standard runners used by this public repository are free.
 2. Keep the default branch set to main. The publishing workflow deliberately runs only from main.
-3. Trigger **Actions → TrendForge Shorts Pipeline → Run workflow**.
-4. Keep AUTO_PUBLISH=false for the first run. If an eligible recent candidate is available, the workflow should render a motion-graphic MP4 and attach it as a short-lived artifact. The run report is also written to the Actions summary.
-5. Inspect the preview, narration, captions, factual accuracy and metadata artifact. If no fresh candidate is found or all scripts fail validation, nothing is rendered; inspect the run summary before changing the freshness window.
-6. After you are satisfied and OAuth is stable, change AUTO_PUBLISH=true and VIDEO_PRIVACY_STATUS=public. The schedule will then publish up to MAX_UPLOADS_PER_DAY videos without per-video approval.
+3. The **Build Zero-Cost Sample Video** workflow runs without any secrets. It generates a locally narrated illustrative sample and commits it to `assets/sample/trendforge-free-demo.mp4`. It does not require Groq, YouTube API credentials, or YouTube OAuth.
+4. For live-source production, add the five secrets listed above. To preview live discovery and a Groq-generated script without posting, set the repository variable `AUTO_PUBLISH=false`, then use **Actions → TrendForge Shorts Pipeline → Run workflow**. The preview MP4 is available as a three-day artifact.
+5. Once the preview and OAuth authorization are verified, set `AUTO_PUBLISH=true` and the desired `VIDEO_PRIVACY_STATUS` (default `public`). Scheduled runs will then publish original Shorts without per-video approval.
+6. If the Groq key is missing or a free-tier rate limit is reached, the workflow will stop/skip rather than switch to a paid service.
 
 Uploads, channel policy, OAuth expiry, quota errors and returned privacy status must be checked in the first production run. Do not assume an HTTP success means that a video is public; the pipeline records the actual returned privacy status.
 
 ## 7. Schedule and state
 
-The workflow runs every six hours (UTC) and can be manually dispatched. It persists only public metadata, trend estimates, deduplication identifiers and publishing results in data/state.json. The generated MP4 and narration are not committed to Git; the upload artifact is retained for three days.
+The live pipeline runs every six hours (UTC) and can be manually dispatched. It persists only short-lived deduplication identifiers and publishing results in data/state.json. Production MP4s are not committed to Git; their workflow artifacts expire after three days. The separate illustrative demo MP4 is intentionally committed under assets/sample/.
 
 GitHub may delay scheduled jobs during periods of heavy load and automatically disable schedules for public repositories after 60 days without repository activity. If Actions stops running, open the Actions tab and re-enable the workflow if GitHub disabled it.
 
@@ -89,3 +89,4 @@ GitHub may delay scheduled jobs during periods of heavy load and automatically d
 - **Groq 401/404/429 error:** verify GROQ_API_KEY, that GROQ_MODEL is currently available to your account's free tier, and remaining free-tier limits. The workflow should skip/stop rather than use a paid model.
 - **FFmpeg subtitle error:** check that the runner installed FFmpeg with libass subtitle support.
 - **No video generated:** inspect the short-lived run artifact and summary; the source freshness window, deduplication window, script validation or daily upload cap may have prevented a post.
+- **eSpeak NG not found:** the rendering runner must install espeak-ng; local runs must install it with their package manager.
