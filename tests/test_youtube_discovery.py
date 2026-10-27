@@ -44,7 +44,6 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
                         "categoryId": "24",
                         "description": "Public metadata",
                     },
-                    "statistics": {"viewCount": "150000", "likeCount": "2400", "commentCount": "300"},
                 })
             return {"items": result}
         raise AssertionError(f"Unexpected mocked API call: {endpoint}, {params}")
