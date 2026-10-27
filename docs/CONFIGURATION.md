@@ -12,8 +12,8 @@ All settings can be supplied as GitHub Actions repository **variables** or local
 | MAX_CREATOR_CHANNELS_PER_RUN | 4 | Number of tracked creator channels checked for latest uploads per execution |
 | HISTORY_RETENTION_DAYS | 45 | Retention of public trend snapshots, generated items and upload records |
 | MIN_SCRIPT_QUALITY | 70 | Minimum language-model self-score; this is a heuristic gate, not a guarantee |
-| YOUTUBE_REGIONS | US|GB|CA|AU | Regions used for popular-video charts |
-| YOUTUBE_CREATOR_HANDLES | MrBeast, MarkRober, RyanTrahan, Sidemen, Airrack, Mrwhosetheboss, MKBHD | Creator channel handles; entries separated with a pipe character, without the @ prefix |
+| YOUTUBE_REGIONS | US, GB, CA, AU | Regions used for popular-video charts; configure as pipe-separated codes |
+| YOUTUBE_CREATOR_HANDLES | MrBeast / MarkRober / RyanTrahan / Sidemen / Airrack / Mrwhosetheboss / MKBHD | Creator channel handles; entries separated with a pipe character, without the @ prefix |
 | YOUTUBE_SEARCH_QUERIES | niche terms | Search terms rotated across runs; separate entries with a pipe character |
 | OPENAI_MODEL | gpt-4o-mini | Model used for original script/metadata generation; use a model available to your API account |
 | OPENAI_TTS_MODEL | gpt-4o-mini-tts | Model used for narration |
