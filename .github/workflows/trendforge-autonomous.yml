@@ -1,0 +1,151 @@
+name: TrendForge Autonomous Shorts
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'   # every 6 hours UTC
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload generated Shorts to YouTube (requires OAuth secrets)
+        required: false
+        type: boolean
+        default: false
+      max_clips:
+        description: Max clips to render per run
+        required: false
+        type: choice
+        options: ["1", "2", "3"]
+        default: "2"
+      clip_seconds:
+        description: Target clip duration in seconds
+        required: false
+        type: choice
+        options: ["15", "20", "30", "40", "50", "60"]
+        default: "30"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trendforge-autonomous-shorts
+  cancel-in-progress: false
+
+jobs:
+  autonomous-shorts:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Validate autonomous rights and publishing credentials
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: |
+          echo "::notice::Autonomous mode: fetching trending YouTube videos and clipping authorized source footage."
+          echo "::notice::The operator is responsible for verifying reuse rights for any footage processed."
+          if [ "$PUBLISH" = "true" ]; then
+            missing=""
+            [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
+            [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
+            [ -n "$YOUTUBE_REFRESH_TOKEN" ] || missing="$missing YOUTUBE_REFRESH_TOKEN"
+            if [ -n "$missing" ]; then
+              echo "::error::Publishing requested but OAuth secrets are missing:$missing"
+              exit 1
+            fi
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install FFmpeg, yt-dlp, and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          python -m pip install --upgrade pip
+          pip install -r requirements-clipper.txt yt-dlp pytest
+
+      - name: Run clipper unit tests
+        run: pytest -q tests/test_clipper.py
+
+      - name: Discover trending YouTube candidates
+        id: discover
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
+          YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator' }}
+        run: |
+          if [ -z "$YOUTUBE_API_KEY" ]; then
+            echo "YOUTUBE_API_KEY not set; falling back to demo source video."
+            echo "source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw" >> $GITHUB_OUTPUT
+            echo "source_title=Me at the zoo" >> $GITHUB_OUTPUT
+            echo "source_creator=Jawed Karim" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          python -m trendforge.discover --count 5 --json > outputs/discovery.json
+          python - <<'PY'
+          import json
+          with open("outputs/discovery.json") as f:
+              cands = json.load(f)
+          if not cands:
+              raise SystemExit("No trending candidates found")
+          top = cands[0]
+          print(f"Selected: {top['video_id']} — {top['title']} by {top['creator']}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write(f"source_url={top['url']}\n")
+              out.write(f"source_title={top['title']}\n")
+              out.write(f"source_creator={top['creator']}\n")
+          PY
+
+      - name: Download source video via yt-dlp
+        env:
+          SOURCE_URL: ${{ steps.discover.outputs.source_url }}
+        run: |
+          mkdir -p outputs/source
+          yt-dlp \
+            --no-check-certificates \
+            --no-warnings \
+            --quiet \
+            --no-playlist \
+            --format "best[height<=720][ext=mp4]/best" \
+            --extractor-args "youtube:player_client=android" \
+            --output "outputs/source/source-video.%(ext)s" \
+            "$SOURCE_URL"
+          ls -la outputs/source/
+
+      - name: Render vertical Shorts from real footage
+        env:
+          SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
+          SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
+          SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
+          SOURCE_RIGHTS_CONFIRMED: "true"
+          CLIP_COUNT: ${{ inputs.max_clips }}
+          CLIP_SECONDS: ${{ inputs.clip_seconds }}
+          CLIP_AUTO_PUBLISH: ${{ inputs.publish }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
+          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
+          VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'en' }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+        run: python -m trendforge.clipper --input outputs/source/source-video.mp4 --output outputs/clips
+
+      - name: Upload clips and manifest as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trendforge-autonomous-clips-${{ github.run_number }}
+          path: |
+            outputs/clips/*.mp4
+            outputs/clips/clip-manifest.json
+          if-no-files-found: ignore
+          retention-days: 7
