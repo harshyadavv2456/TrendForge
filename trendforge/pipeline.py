@@ -76,13 +76,12 @@ def _self_test() -> int:
             "publishedAt": now.isoformat(),
             "categoryId": "24",
         },
-        "statistics": {"viewCount": "250000", "likeCount": "8000", "commentCount": "500"},
         "discovery": {"source_kind": "creator_latest", "source_label": "Latest uploads from Example Creator", "source_rank": 1},
     }
     summary = candidate_summary(video)
     assert summary["video_id"] == "self-test"
     assert summary["discovery"]["source_kind"] == "creator_latest"
-    assert summary["views"] == 250000
+    assert "views" not in summary
     assert _is_fresh(video, 14)
     assert not _is_fresh({"snippet": {}}, 14)
     print("TrendForge self-test passed: discovery provenance, raw API metadata normalization and freshness checks.")
