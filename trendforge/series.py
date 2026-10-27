@@ -1,11 +1,14 @@
 """Build connected YouTube Shorts series from sequential source segments.
 
-Each part is its own Shorts-compliant clip (<=60s): a "PART N / M" title card
-plus a sequential source segment. Parts tell a continuous story so viewers
-watch the whole series, but each part publishes as a standalone Short.
+Each part is its own Shorts-compliant clip (<=60s): a sequential source
+segment with a fast animated "PART N / M" overlay that fades in and out
+during the first ~2 seconds, then the video plays normally. Parts tell a
+continuous story so viewers watch the whole series, but each part publishes
+as a standalone Short.
 """
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -18,7 +21,8 @@ LOG = logging.getLogger("trendforge.series")
 
 WIDTH, HEIGHT = 1080, 1920
 SHORTS_MAX_SECONDS = 60
-DEFAULT_PART_SECONDS = 45  # leaves room for a ~3-4s title card under the 60s cap
+DEFAULT_PART_SECONDS = 55  # content seconds; overlay rides on top, no extra time
+OVERLAY_SECONDS = 2.0      # how long the PART badge stays on screen
 
 # Candidate system font paths (macOS first, then Linux fallbacks)
 FONT_PATHS = [
@@ -41,49 +45,90 @@ def _load_font(size: int, bold: bool = False) -> Any:
     return ImageFont.load_default()
 
 
-def _centered_bbox(draw: ImageDraw.ImageDraw, text: str, font: Any, cx: int, cy: int) -> tuple[int, int]:
+def _centered_x(draw: ImageDraw.ImageDraw, text: str, font: Any, cx: int) -> int:
     bbox = draw.textbbox((0, 0), text, font=font)
-    w = bbox[2] - bbox[0]
-    h = bbox[3] - bbox[1]
-    return int(cx - w / 2), int(cy - h / 2)
+    return int(cx - (bbox[2] - bbox[0]) / 2)
 
 
-def _make_title_card(part: int, total: int, text: str, output: Path, duration: float = 3.0) -> None:
-    """Render a vertical title card video: 'PART N / M' plus a subtitle line.
-
-    Includes silent audio so the concat filter can mix it with the source
-    segment without stream mismatches.
-    """
-    img = Image.new("RGB", (WIDTH, HEIGHT), (10, 15, 33))
-    draw = ImageDraw.Draw(img)
-
-    font_big = _load_font(110, bold=True)
-    font_small = _load_font(44, bold=False)
+def _make_part_overlay(part: int, total: int, text: str, output: Path) -> None:
+    """Render a semi-transparent PART N / M badge PNG with alpha channel."""
+    pad = 40
+    font_big = _load_font(100, bold=True)
+    font_small = _load_font(36, bold=False)
 
     part_text = f"PART {part} / {total}"
-    x, y = _centered_bbox(draw, part_text, font_big, WIDTH // 2, HEIGHT // 2 - 70)
-    draw.text((x, y), part_text, font=font_big, fill=(255, 255, 255))
+    subtitle = str(text)[:60]
 
-    subtitle = str(text)[:70]
-    x2, y2 = _centered_bbox(draw, subtitle, font_small, WIDTH // 2, HEIGHT // 2 + 90)
-    draw.text((x2, y2), subtitle, font=font_small, fill=(200, 210, 225))
+    # Measure text to size the badge pill.
+    dummy = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+    pb = dummy.textbbox((0, 0), part_text, font=font_big)
+    sb = dummy.textbbox((0, 0), subtitle, font=font_small)
+    badge_w = max(pb[2] - pb[0], sb[2] - sb[0]) + pad * 2
+    badge_h = (pb[3] - pb[0]) + (sb[3] - sb[1]) + pad * 3
 
-    card_path = output.parent / f"{output.stem}-card-{part:02d}.png"
-    img.save(card_path)
+    img = Image.new("RGBA", (badge_w, badge_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img, "RGBA")
 
+    # Dark rounded pill background.
+    draw.rounded_rectangle(
+        (0, 0, badge_w, badge_h),
+        radius=40,
+        fill=(0, 0, 0, 150),
+    )
+    # Accent border.
+    draw.rounded_rectangle(
+        (6, 6, badge_w - 6, badge_h - 6),
+        radius=36,
+        outline=(255, 255, 255, 90),
+        width=3,
+    )
+
+    x_big = _centered_x(draw, part_text, font_big, badge_w // 2)
+    y_big = badge_h // 2 - (pb[3] - pb[0]) // 2 - 8
+    draw.text((x_big, y_big), part_text, font=font_big, fill=(255, 255, 255, 255))
+
+    x_small = _centered_x(draw, subtitle, font_small, badge_w // 2)
+    y_small = y_big + (pb[3] - pb[0]) + 12
+    draw.text((x_small, y_small), subtitle, font=font_small, fill=(230, 240, 250, 235))
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    img.save(output, "PNG")
+
+
+def _add_part_overlay(
+    segment_path: Path,
+    overlay_png: Path,
+    output: Path,
+    part: int,
+    total: int,
+    title: str,
+) -> None:
+    """Composite the PART badge onto the segment for the first OVERLAY_SECONDS.
+
+    The badge fades in over 0.3s, holds, then fades out over 0.3s. After that
+    the video plays normally with no overlay.
+    """
     _run(
         [
-            "ffmpeg", "-y", "-loop", "1", "-i", str(card_path),
-            "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-            "-c:v", "libx264", "-c:a", "aac", "-t", str(duration), "-pix_fmt", "yuv420p",
-            "-shortest",
-            "-vf",
-            f"scale={WIDTH}:{HEIGHT}:force_original_aspect_ratio=decrease,"
-            f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
+            "ffmpeg", "-y",
+            "-i", str(segment_path),
+            "-i", str(overlay_png),
+            "-filter_complex",
+            (
+                "[1:v]format=rgba,"
+                f"fade=t=in:st=0:d=0.3:alpha=1,"
+                f"fade=t=out:st={OVERLAY_SECONDS - 0.3}:d=0.3:alpha=1[badge];"
+                "[0:v][badge]overlay=(W-w)/2:(H-h)/2-120:enable="
+                f"'between(t,0,{OVERLAY_SECONDS})':format=auto[v]"
+            ),
+            "-map", "[v]", "-map", "0:a?",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
+            "-c:a", "copy",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
             str(output),
         ],
-        f"Title card part {part}",
-        timeout=120,
+        f"Series part {part} part-overlay",
+        timeout=300,
     )
 
 
@@ -96,12 +141,12 @@ def build_series(
     source_url: str,
     part_seconds: int = DEFAULT_PART_SECONDS,
     count: int = 5,
-    title_card_seconds: float = 3.0,
+    overlay_seconds: float = OVERLAY_SECONDS,
 ) -> dict[str, Any]:
     """Render sequential source segments as individual Shorts series parts.
 
-    Each part is a separate MP4 under SHORTS_MAX_SECONDS, prefixed with a
-    "PART N / M" title card so the series reads as one connected story.
+    Each part is a separate MP4 under SHORTS_MAX_SECONDS, with a fast animated
+    "PART N / M" overlay on the first ~2 seconds so viewers engage immediately.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     workdir = output_dir / ".work"
@@ -130,50 +175,34 @@ def build_series(
 
     for index, (seg_start, seg_end) in enumerate(segments, start=1):
         part_stem = f"part-{index:02d}"
+        raw_segment = workdir / f"{part_stem}-raw.mp4"
+        overlay_png = workdir / f"{part_stem}-badge.png"
         part_path = output_dir / f"{part_stem}.mp4"
 
-        # Title card + source segment must stay under the Shorts cap.
-        source_segment_seconds = SHORTS_MAX_SECONDS - title_card_seconds
-        actual_seg_end = min(seg_end, seg_start + source_segment_seconds)
+        _make_part_overlay(index, total, title, overlay_png)
 
-        card_path = workdir / f"{part_stem}-card.mp4"
-        _make_title_card(index, total, title, card_path, duration=title_card_seconds)
-
-        segment_path = workdir / f"{part_stem}-segment.mp4"
-        candidate = ClipCandidate(seg_start, actual_seg_end, 0.0, "", 0)
+        candidate = ClipCandidate(seg_start, seg_end, 0.0, "", 0)
         render_clip(
-            source, candidate, [], segment_path,
+            source, candidate, [], raw_segment,
             creator, title, source_url,
         )
 
-        # Concat title card + segment into one Shorts part (re-encode so
-        # timestamps are continuous and total duration stays under the 60s cap).
-        _run(
-            [
-                "ffmpeg", "-y",
-                "-i", str(card_path),
-                "-i", str(segment_path),
-                "-filter_complex",
-                "[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[v][a]",
-                "-map", "[v]", "-map", "[a]",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
-                "-c:a", "aac", "-b:a", "128k",
-                "-pix_fmt", "yuv420p", "-movflags", "+faststart",
-                str(part_path),
-            ],
-            f"Series part {index} concatenation",
-            timeout=300,
-        )
+        _add_part_overlay(raw_segment, overlay_png, part_path, index, total, title)
 
         probe = _probe(part_path)
+        if probe["duration_seconds"] > SHORTS_MAX_SECONDS + 1:
+            LOG.warning(
+                "Part %d is %.1fs — over the %ds Shorts cap. Trim it or lower --part-seconds.",
+                index, probe["duration_seconds"], SHORTS_MAX_SECONDS,
+            )
         outputs.append({
             "path": str(part_path),
-            "duration_seconds": probe["duration_seconds"],
+            "duration_seconds": round(probe["duration_seconds"], 2),
             "size_bytes": part_path.stat().st_size,
             "part": index,
             "total": total,
             "source_start_seconds": round(seg_start, 3),
-            "source_end_seconds": round(actual_seg_end, 3),
+            "source_end_seconds": round(seg_end, 3),
             "source_url": source_url,
             "source_creator": creator,
             "source_title": title,
@@ -183,6 +212,7 @@ def build_series(
     manifest = {
         "mode": "shorts-series",
         "rights_confirmed_by_operator": True,
+        "overlay_seconds": overlay_seconds,
         "source": {
             "title": title,
             "creator": creator,
@@ -194,10 +224,9 @@ def build_series(
         "parts": outputs,
         "total_parts": total,
         "part_seconds": part_seconds,
-        "title_card_seconds": title_card_seconds,
     }
     (output_dir / "series-manifest.json").write_text(
-        __import__("json").dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     return manifest
@@ -205,7 +234,6 @@ def build_series(
 
 def main() -> int:
     import argparse
-    import json
     import sys
 
     parser = argparse.ArgumentParser(
@@ -219,7 +247,7 @@ def main() -> int:
     parser.add_argument("--rights-confirmed", action="store_true", required=True, help="Confirm reuse rights")
     parser.add_argument("--count", type=int, default=5, help="Number of parts in the series")
     parser.add_argument("--part-seconds", type=int, default=DEFAULT_PART_SECONDS, help="Seconds per source segment")
-    parser.add_argument("--title-card-seconds", type=float, default=3.0, help="Seconds per title card")
+    parser.add_argument("--overlay-seconds", type=float, default=OVERLAY_SECONDS, help="Seconds the PART badge shows")
     args = parser.parse_args()
 
     if not args.rights_confirmed:
@@ -237,7 +265,7 @@ def main() -> int:
             source_url=args.source_url,
             part_seconds=args.part_seconds,
             count=args.count,
-            title_card_seconds=args.title_card_seconds,
+            overlay_seconds=args.overlay_seconds,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
