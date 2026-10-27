@@ -4,7 +4,7 @@ All non-secret settings can be supplied as GitHub Actions repository **variables
 
 | Name | Default | Meaning |
 | --- | --- | --- |
-| AUTO_PUBLISH | false in the workflow by default | true creates a public upload after validation; false produces a preview only |
+| AUTO_PUBLISH | true in the workflow by default | true uploads after validation; false produces a preview only |
 | MAX_UPLOADS_PER_DAY | 2 | Hard cap based on successful uploads recorded in UTC state |
 | MAX_CANDIDATES | 35 | Maximum current-run candidates considered, interleaved across discovery sources |
 | MAX_SEARCHES_PER_RUN | 4 | Rotating broad niche searches per execution; controls API quota usage |
@@ -18,7 +18,7 @@ All non-secret settings can be supplied as GitHub Actions repository **variables
 | OPENAI_TTS_MODEL | gpt-4o-mini-tts | Model used for narration |
 | OPENAI_TTS_VOICE | coral | Supported voice for the chosen TTS model |
 | VIDEO_CATEGORY_ID | 24 | YouTube video category (24 = Entertainment) |
-| VIDEO_PRIVACY_STATUS | public | Requested privacy for uploads; start with private until testing is complete |
+| VIDEO_PRIVACY_STATUS | public | Requested privacy for uploads; set private or unlisted when wanted |
 | MAX_SOURCE_AGE_DAYS | 14 | Reject sources whose published date is older than this window (1–30 days) |
 | VIDEO_LANGUAGE | en | Default language metadata |
 | OPENAI_TTS_INSTRUCTIONS | production voice instructions | Narration tone |
