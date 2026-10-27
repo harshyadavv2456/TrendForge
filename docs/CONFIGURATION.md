@@ -8,11 +8,13 @@ All settings can be supplied as GitHub Actions repository **variables** or local
 | MAX_UPLOADS_PER_DAY | 2 | Hard cap based on successful uploads recorded in UTC state |
 | MIN_TREND_SCORE | 42 | Minimum ranking score out of 100 before a script is generated |
 | MAX_CANDIDATES | 35 | Candidate metadata records retained for scoring/reporting |
-| MAX_SEARCHES_PER_RUN | 4 | Rotating search queries per execution; controls API quota usage |
+| MAX_SEARCHES_PER_RUN | 4 | Rotating broad niche searches per execution; controls API quota usage |
+| MAX_CREATOR_CHANNELS_PER_RUN | 4 | Number of tracked creator channels checked for latest uploads per execution |
 | HISTORY_RETENTION_DAYS | 45 | Retention of public trend snapshots, generated items and upload records |
 | MIN_SCRIPT_QUALITY | 70 | Minimum language-model self-score; this is a heuristic gate, not a guarantee |
 | YOUTUBE_REGIONS | US|GB|CA|AU | Regions used for popular-video charts |
-| YOUTUBE_SEARCH_QUERIES | watchlist | Search terms rotated across runs; separate entries with a pipe character |
+| YOUTUBE_CREATOR_HANDLES | MrBeast, MarkRober, RyanTrahan, Sidemen, Airrack, Mrwhosetheboss, MKBHD | Creator channel handles; entries separated with a pipe character, without the @ prefix |
+| YOUTUBE_SEARCH_QUERIES | niche terms | Search terms rotated across runs; separate entries with a pipe character |
 | OPENAI_MODEL | gpt-4o-mini | Model used for original script/metadata generation; use a model available to your API account |
 | OPENAI_TTS_MODEL | gpt-4o-mini-tts | Model used for narration |
 | OPENAI_TTS_VOICE | coral | Supported voice for the chosen TTS model |
@@ -23,7 +25,7 @@ All settings can be supplied as GitHub Actions repository **variables** or local
 
 ## Search strategy
 
-TrendForge mixes the YouTube most-popular chart for each configured region with recent-video search requests. Query terms rotate through the watchlist, so not every creator is searched on every run. The default is designed to remain conservative with API usage rather than exhaust search quota. You can edit the watchlist via YOUTUBE_SEARCH_QUERIES.
+TrendForge mixes YouTube's most-popular chart for each configured region, latest uploads from a rotating set of actual channel handles, and recent-video searches across niches. It resolves handles to channel IDs and caches the IDs in data/state.json. By default, four creator channels and four broad searches are checked each run; every configured creator is revisited as the cursor rotates. This is deliberately a quota-aware sample, not an exhaustive crawl of YouTube. Configure YOUTUBE_CREATOR_HANDLES and YOUTUBE_SEARCH_QUERIES as pipe-separated values.
 
 ## Ranking model
 
