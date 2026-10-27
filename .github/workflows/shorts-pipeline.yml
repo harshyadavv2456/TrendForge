@@ -89,11 +89,11 @@ jobs:
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
           AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
           MAX_UPLOADS_PER_DAY: ${{ vars.MAX_UPLOADS_PER_DAY || '2' }}
-          MIN_TREND_SCORE: ${{ vars.MIN_TREND_SCORE || '42' }}
           MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES || '35' }}
           MAX_SEARCHES_PER_RUN: ${{ vars.MAX_SEARCHES_PER_RUN || '4' }}
           MAX_CREATOR_CHANNELS_PER_RUN: ${{ vars.MAX_CREATOR_CHANNELS_PER_RUN || '4' }}
-          HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '45' }}
+          HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '21' }}
+          MAX_SOURCE_AGE_DAYS: ${{ vars.MAX_SOURCE_AGE_DAYS || '14' }}
           MIN_SCRIPT_QUALITY: ${{ vars.MIN_SCRIPT_QUALITY || '70' }}
           YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
           YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
