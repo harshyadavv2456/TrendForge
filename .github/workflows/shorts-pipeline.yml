@@ -26,29 +26,60 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check one-time setup
+        id: preflight
+        env:
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
+        run: |
+          missing=""
+          [ -n "$YOUTUBE_API_KEY" ] || missing="$missing YOUTUBE_API_KEY"
+          [ -n "$OPENAI_API_KEY" ] || missing="$missing OPENAI_API_KEY"
+          if [ "$AUTO_PUBLISH" = "true" ]; then
+            [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
+            [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
+            [ -n "$YOUTUBE_REFRESH_TOKEN" ] || missing="$missing YOUTUBE_REFRESH_TOKEN"
+          fi
+          if [ -n "$missing" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "## TrendForge setup required" >> "$GITHUB_STEP_SUMMARY"
+            echo "No API calls or publishing performed. Configure these repository Actions secrets before enabling the pipeline:$missing" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up Python
+        if: steps.preflight.outputs.ready == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Install rendering dependencies
+        if: steps.preflight.outputs.ready == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
           ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
 
       - name: Install Python dependencies
+        if: steps.preflight.outputs.ready == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run unit tests and credential-free checks
+        if: steps.preflight.outputs.ready == 'true'
         run: |
           pytest -q
           python -m trendforge.pipeline --self-test
 
       - name: Discover trends, create a Short, and publish when enabled
+        if: steps.preflight.outputs.ready == 'true'
         id: pipeline
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
