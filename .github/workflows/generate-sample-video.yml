@@ -1,0 +1,78 @@
+name: Build Zero-Cost Sample Video
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/render_sample.py"
+      - "trendforge/renderer.py"
+      - ".github/workflows/generate-sample-video.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: trendforge-sample-video
+  cancel-in-progress: false
+
+jobs:
+  build-sample:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install completely local rendering tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+          ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
+          espeak-ng --version
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate demo video without API credentials
+        run: python scripts/render_sample.py
+
+      - name: Verify sample video
+        run: |
+          test -s assets/sample/trendforge-free-demo.mp4
+          ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of default=noprint_wrappers=1 assets/sample/trendforge-free-demo.mp4
+          ffprobe -v error -show_entries format=duration,size -of default=noprint_wrappers=1 assets/sample/trendforge-free-demo.mp4
+          test "$(stat -c %s assets/sample/trendforge-free-demo.mp4)" -lt 50000000
+
+      - name: Commit sample video into the repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add assets/sample/trendforge-free-demo.mp4
+          if git diff --cached --quiet; then
+            echo "Sample video is already up to date."
+          else
+            git commit -m "chore: add generated zero-cost sample video [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload sample preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trendforge-free-demo
+          path: assets/sample/trendforge-free-demo.mp4
+          if-no-files-found: error
+          retention-days: 7
