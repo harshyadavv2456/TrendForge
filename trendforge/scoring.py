@@ -54,7 +54,7 @@ def score_video(
         "record", "building", "million", "surprise", "world's", "worlds",
     )
     def contains_term(term: str) -> bool:
-        return re.search(r"(?<!\\w)" + re.escape(term) + r"(?!\\w)", title) is not None
+        return re.search(r"(?<!\w)" + re.escape(term) + r"(?!\w)", title) is not None
 
     topic_fit = min(100.0, 38.0 + sum(10 for term in high_value_terms if contains_term(term)))
     if category_id in {"20", "22", "23", "24", "28"}:
