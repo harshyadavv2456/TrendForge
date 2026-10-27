@@ -1,6 +1,6 @@
 # Configuration reference
 
-All settings can be supplied as GitHub Actions repository **variables** or local environment variables. The workflow's secret values are separate.
+All non-secret settings can be supplied as GitHub Actions repository **variables** or local environment variables. The workflow's secret values are separate. YouTube discovery deliberately preserves native API ordering and avoids derived cross-channel scoring.
 
 | Name | Default | Meaning |
 | --- | --- | --- |
