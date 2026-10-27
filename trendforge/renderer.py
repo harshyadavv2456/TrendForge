@@ -2,11 +2,8 @@
 from __future__ import annotations
 
 import hashlib
-import math
-import os
 import re
 import subprocess
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -73,14 +70,13 @@ def _make_slide(
     seed = hashlib.sha256((str(candidate.get("id", "")) + str(scene_index)).encode()).digest()
     accent = ACCENTS[seed[0] % len(ACCENTS)]
     img = Image.new("RGB", (WIDTH, HEIGHT), (10, 15, 33))
-    pixels = img.load()
+    gradient = ImageDraw.Draw(img)
     top = (9 + seed[1] % 12, 15 + seed[2] % 16, 34 + seed[3] % 25)
     bottom = (19 + seed[4] % 20, 19 + seed[5] % 18, 55 + seed[6] % 36)
     for y in range(HEIGHT):
         t = y / max(1, HEIGHT - 1)
         color = tuple(int(top[i] * (1 - t) + bottom[i] * t) for i in range(3))
-        for x in range(WIDTH):
-            pixels[x, y] = color
+        gradient.line((0, y, WIDTH, y), fill=color)
     draw = ImageDraw.Draw(img, "RGBA")
 
     # Decorative abstract shapes are deliberately illustrative, not fake footage.
@@ -114,9 +110,9 @@ def _make_slide(
     score = float(candidate.get("trend", {}).get("score", 0))
     source_title = str(snippet.get("title", "Creator trend")).strip()
     source_creator = str(snippet.get("channelTitle", "Creator")).strip()
-    draw.text((74, 1510), "OBSERVED SIGNAL", font=_font(23, True), fill=(*accent, 255))
-    _draw_wrapped(draw, source_creator[:65], (74, 1554), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
-    _draw_wrapped(draw, source_title[:130], (74, 1608), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
+    draw.text((74, 1270), "OBSERVED SIGNAL", font=_font(23, True), fill=(*accent, 255))
+    _draw_wrapped(draw, source_creator[:65], (74, 1314), _font(34, True), (248, 249, 255), WIDTH - 148, 8, 1)
+    _draw_wrapped(draw, source_title[:130], (74, 1368), _font(25, False), (200, 210, 233), WIDTH - 148, 6, 2)
     metric_text = f"{views:,} public views  •  Radar score {score:.0f}/100"
     draw.text((74, 1733), metric_text, font=_font(23, True), fill=(220, 229, 246))
     draw.text((74, 1810), "ORIGINAL COMMENTARY  •  SOURCE LINK IN DESCRIPTION", font=_font(19, True), fill=(155, 171, 205))
