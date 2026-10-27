@@ -1,14 +1,14 @@
 #!/bin/bash
-# TrendForge Autonomous Shorts - Local Runner
-# Runs the full pipeline: discover trending → download → render → publish
-# Set up with cron to run every 6 hours for full autonomy.
+# TrendForge Autonomous Shorts — Local Runner (cache + retry + continuous)
+# Runs full pipeline: retry unpublished → discover → download → render → publish
+# Set up with cron to run every 2 hours for full autonomy.
 set -euo pipefail
 
 cd /Users/harshyadav/TrendForge
 source .venv/bin/activate
 export TRENDFORGE_LOG="/Users/harshyadav/TrendForge/logs/autonomous-$(date +%Y%m%d-%H%M%S).log"
 
-# Load local environment variables (API keys, OAuth tokens, etc.)
+# Load local environment (gitignored, never committed)
 if [ -f .env ]; then
     set -a
     . .env
@@ -23,19 +23,85 @@ log() {
 
 log "=== TrendForge autonomous run started ==="
 
-# Step 1: Discover trending YouTube candidates
+# ── Step 0: Retry publishing any previously rendered but unpublished clips ──
+log "Step 0: Checking for previously rendered unpublished clips..."
+PUBLISHED_STATE="data/published.json"
+if [ -f "$PUBLISHED_STATE" ]; then
+    mapfile -t PUBLISHED_PARTS < <(python3 -c "import json; d=json.load(open('$PUBLISHED_STATE')); print('\n'.join(d.get('published_parts', [])))")
+else
+    PUBLISHED_PARTS=()
+fi
+
+unpublished_parts=()
+for part_file in outputs/series/part-*.mp4; do
+    [ -f "$part_file" ] || continue
+    part_name=$(basename "$part_file")
+    if [[ ! " ${PUBLISHED_PARTS[@]} " =~ " ${part_name} " ]]; then
+        unpublished_parts+=("$part_file")
+    fi
+done
+
+if [ ${#unpublished_parts[@]} -gt 0 ]; then
+    log "Found ${#unpublished_parts[@]} unpublished clip(s), attempting publish..."
+    python - <<'PY' 2>>"$TRENDFORGE_LOG"
+import json, os, glob
+from pathlib import Path
+from trendforge.config import Settings
+from trendforge.publisher import upload_short
+
+settings = Settings.from_env()
+state_path = Path("data/published.json")
+state = json.loads(state_path.read_text()) if state_path.exists() else {"published_parts": []}
+
+manifest_path = Path("outputs/series/series-manifest.json")
+manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"source": {}, "parts": []}
+source = manifest.get("source", {})
+
+newly_published = []
+for part_file in sorted(glob.glob("outputs/series/part-*.mp4")):
+    part_name = Path(part_file).name
+    if part_name in state["published_parts"]:
+        continue
+    script = {
+        "title": f"{source.get('title','TrendForge')} | Part {Path(part_file).stem}",
+        "description": (
+            f"{source.get('title','TrendForge')} — Shorts series part from {source.get('creator','Creator')}.\n\n"
+            f"Source: {source.get('url','')}\n\n"
+            "Original footage clipped into vertical Shorts with attribution."
+        )[:4800],
+        "tags": ["shorts", "highlight", "clip", str(source.get('creator','Creator'))[:40]],
+        "source": {"url": source.get('url',''), "creator": source.get('creator',''), "title": source.get('title','')},
+    }
+    try:
+        result = upload_short(settings, Path(part_file), script, publish=True)
+        state["published_parts"].append(part_name)
+        newly_published.append(part_name)
+        print(f"Published {part_name}: {result['url']} ({result['privacy_status']})")
+    except Exception as exc:
+        print(f"Publish failed for {part_name}: {exc}")
+
+state_path.write_text(json.dumps(state, indent=2))
+if newly_published:
+    print(f"Total newly published: {len(newly_published)}")
+PY
+    log "Publish retry complete."
+else
+    log "No unpublished clips to publish."
+fi
+
+# ── Step 1: Discover trending YouTube candidates ──
 log "Step 1: Discovering trending candidates..."
 if [ -z "${YOUTUBE_API_KEY:-}" ]; then
-    log "WARNING: YOUTUBE_API_KEY not set. Using fallback demo video."
-    SOURCE_URL="https://www.youtube.com/watch?v=jNQXAC9IVRw"
-    SOURCE_TITLE="Me at the zoo"
-    SOURCE_CREATOR="Jawed Karim"
+    log "WARNING: YOUTUBE_API_KEY not set. Skipping discovery (no new clips will be rendered)."
+    SKIP_DISCOVERY=1
 else
+    SKIP_DISCOVERY=0
+fi
+
+if [ "$SKIP_DISCOVERY" -eq 0 ]; then
     python -m trendforge.discover --count 5 --json > outputs/discovery.json 2>>"$TRENDFORGE_LOG" || {
-        log "ERROR: Discovery failed. Exiting."
-        exit 1
+        log "WARNING: Discovery failed, will reuse cached source if available."
     }
-    # Parse discovery output into shell variables via a temp file
     python - <<'PY' 2>>"$TRENDFORGE_LOG"
 import json, os
 with open("outputs/discovery.json") as f:
@@ -48,44 +114,54 @@ with open("/tmp/trendforge_source.env", "w") as out:
     out.write(f'SOURCE_TITLE="{top["title"]}"\n')
     out.write(f'SOURCE_CREATOR="{top["creator"]}"\n')
 PY
-    if [ ! -f /tmp/trendforge_source.env ]; then
-        log "ERROR: Could not parse discovery output. Exiting."
-        exit 1
-    fi
     set -a
     . /tmp/trendforge_source.env
     set +a
     rm -f /tmp/trendforge_source.env
+    log "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
+else
+    SOURCE_URL=""
+    SOURCE_TITLE=""
+    SOURCE_CREATOR=""
 fi
 
-log "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
+# ── Step 2: Download source video via yt-dlp (only if not already cached) ──
+log "Step 2: Checking source video cache..."
+SOURCE_FILE="outputs/source/source-video.mp4"
+if [ -f "$SOURCE_FILE" ] && [ -s "$SOURCE_FILE" ]; then
+    log "Source video already cached, skipping download."
+else
+    if [ -z "${SOURCE_URL:-}" ]; then
+        log "ERROR: No source URL and no cached video. Cannot render new clips."
+        exit 0
+    fi
+    log "Downloading source video..."
+    rm -f outputs/source/source-video.mp4
+    yt-dlp \
+        --no-check-certificates \
+        --no-warnings \
+        --quiet \
+        --no-playlist \
+        --format "best[height<=720][ext=mp4]/best" \
+        --extractor-args "youtube:player_client=android" \
+        --output "outputs/source/source-video.%(ext)s" \
+        "$SOURCE_URL" 2>>"$TRENDFORGE_LOG" || {
+        log "ERROR: yt-dlp download failed. Exiting."
+        exit 1
+    }
+    log "Download complete."
+fi
 
-# Step 2: Download source video via yt-dlp (works on local Mac)
-log "Step 2: Downloading source video..."
-rm -f outputs/source/source-video.mp4
-yt-dlp \
-    --no-check-certificates \
-    --no-warnings \
-    --quiet \
-    --no-playlist \
-    --format "best[height<=720][ext=mp4]/best" \
-    --extractor-args "youtube:player_client=android" \
-    --output "outputs/source/source-video.%(ext)s" \
-    "$SOURCE_URL" 2>>"$TRENDFORGE_LOG" || {
-    log "ERROR: yt-dlp download failed. Exiting."
-    exit 1
-}
-log "Download complete."
-
-# Step 3: Build Shorts series (55s parts with PART overlay)
+# ── Step 3: Build Shorts series (highlight moments with PART overlay) ──
 log "Step 3: Building Shorts series..."
 rm -rf outputs/series
+mkdir -p outputs/series
 python -m trendforge.series \
     --input ./outputs/source/source-video.mp4 \
     --output-dir ./outputs/series \
-    --source-url "$SOURCE_URL" \
-    --title "$SOURCE_TITLE" \
-    --creator "$SOURCE_CREATOR" \
+    --source-url "${SOURCE_URL:-}" \
+    --title "${SOURCE_TITLE:-TrendForge Source}" \
+    --creator "${SOURCE_CREATOR:-Creator}" \
     --rights-confirmed \
     --count 5 \
     --part-seconds 55 \
@@ -96,9 +172,9 @@ python -m trendforge.series \
 }
 log "Series built successfully."
 
-# Step 4: Publish to YouTube (if OAuth configured and auto-publish enabled)
+# ── Step 4: Publish new Shorts to YouTube (if auto-publish enabled) ──
 if [ "${AUTO_PUBLISH:-false}" = "true" ] && [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ] && [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ]; then
-    log "Step 4: Publishing Shorts to YouTube..."
+    log "Step 4: Publishing new Shorts to YouTube..."
     python - <<'PY' 2>>"$TRENDFORGE_LOG"
 import json, os
 from pathlib import Path
@@ -106,32 +182,46 @@ from trendforge.config import Settings
 from trendforge.publisher import upload_short
 
 settings = Settings.from_env()
-manifest_path = Path("outputs/series/series-manifest.json")
-manifest = json.loads(manifest_path.read_text())
-source = manifest["source"]
+state_path = Path("data/published.json")
+state = json.loads(state_path.read_text()) if state_path.exists() else {"published_parts": []}
 
-for part in manifest["parts"]:
-    p = Path(part["path"])
+manifest_path = Path("outputs/series/series-manifest.json")
+manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {"source": {}, "parts": []}
+source = manifest.get("source", {})
+
+import glob
+newly_published = []
+for part_file in sorted(glob.glob("outputs/series/part-*.mp4")):
+    part_name = Path(part_file).name
+    if part_name in state["published_parts"]:
+        continue
     script = {
-        "title": f"{source['title']} | Part {part['part']}/{part['total']}"[:90],
+        "title": f"{source.get('title','TrendForge')} | Part {Path(part_file).stem}",
         "description": (
-            f"{source['title']} — Part {part['part']} of {part['total']} from {source['creator']}.\n\n"
-            f"Source video: {source['url']}\n\n"
+            f"{source.get('title','TrendForge')} — Shorts series part from {source.get('creator','Creator')}.\n\n"
+            f"Source: {source.get('url','')}\n\n"
             "Original footage clipped into vertical Shorts with attribution."
         )[:4800],
-        "tags": ["shorts", "highlight", "clip", source["creator"][:40]],
-        "source": {
-            "url": source["url"],
-            "creator": source["creator"],
-            "title": source["title"],
-        },
+        "tags": ["shorts", "highlight", "clip", str(source.get('creator','Creator'))[:40]],
+        "source": {"url": source.get('url',''), "creator": source.get('creator',''), "title": source.get('title','')},
     }
-    result = upload_short(settings, p, script, publish=True)
-    print(f"Part {part['part']}: {result['url']} ({result['privacy_status']})")
-PY
+    try:
+        result = upload_short(settings, Path(part_file), script, publish=True)
+        state["published_parts"].append(part_name)
+        newly_published.append(part_name)
+        print(f"Published {part_name}: {result['url']} ({result['privacy_status']})")
+    except Exception as exc:
+        print(f"Publish failed for {part_name}: {exc}")
+
+state_path.write_text(json.dumps(state, indent=2))
+if newly_published:
+    print(f"Total newly published: {len(newly_published)}")
     log "Publishing complete."
+else:
+    log "No new parts to publish."
+PY
 else
-    log "Step 4: Skipping publish (OAuth secrets not configured locally)."
+    log "Step 4: Auto-publish disabled or OAuth not configured. Clips saved locally."
 fi
 
 log "=== TrendForge autonomous run completed ==="

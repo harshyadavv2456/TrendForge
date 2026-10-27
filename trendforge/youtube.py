@@ -1,6 +1,7 @@
 """YouTube Data API discovery using native chart and search ordering only."""
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Any
@@ -12,6 +13,22 @@ from .config import Settings
 API = "https://www.googleapis.com/youtube/v3"
 TIMEOUT = 25
 LOG = logging.getLogger("trendforge.youtube")
+
+MUSIC_CATEGORY_ID = "10"  # YouTube category ID for Music
+LONG_FORM_MIN_SECONDS = 600  # 10 minutes minimum for series-worthy long-form
+
+
+def _parse_duration_seconds(duration_str: str) -> int:
+    """Parse ISO 8601 duration (PT4M16S, PT1H23M45S) into total seconds."""
+    match = re.match(
+        r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", duration_str or ""
+    )
+    if not match:
+        return 0
+    hours = int(match.group(1) or 0)
+    minutes = int(match.group(2) or 0)
+    seconds = int(match.group(3) or 0)
+    return hours * 3600 + minutes * 60 + seconds
 
 
 class YouTubeAPIError(RuntimeError):
@@ -226,7 +243,19 @@ def fetch_candidates(settings: Settings, state: dict[str, Any]) -> list[dict[str
         item = detail_by_id.get(video_id)
         if not item:
             continue
+        snippet = item.get("snippet", {})
+        content_details = item.get("contentDetails", {})
+        category_id = str(snippet.get("categoryId", ""))
+        duration = _parse_duration_seconds(content_details.get("duration", ""))
+
+        # Skip music videos — they trigger copyright claims and aren't series material.
+        if category_id == MUSIC_CATEGORY_ID:
+            continue
+        # Require long-form (10+ min) so the series has enough footage to slice.
+        if duration < LONG_FORM_MIN_SECONDS:
+            continue
         item["discovery"] = source
+        item["duration_seconds"] = duration
         candidates.append(item)
     return candidates
 
