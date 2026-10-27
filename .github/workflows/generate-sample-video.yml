@@ -66,6 +66,10 @@ jobs:
             echo "Sample video is already up to date."
           else
             git commit -m "chore: add generated zero-cost sample video [skip ci]"
+            # Other workflow/test/docs commits can land while rendering finishes.
+            # Rebase the single binary-add commit on the latest main before pushing.
+            git fetch origin main
+            git rebase origin/main
             git push origin HEAD:main
           fi
 
