@@ -30,7 +30,7 @@ jobs:
         id: preflight
         env:
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
@@ -38,7 +38,7 @@ jobs:
         run: |
           missing=""
           [ -n "$YOUTUBE_API_KEY" ] || missing="$missing YOUTUBE_API_KEY"
-          [ -n "$OPENAI_API_KEY" ] || missing="$missing OPENAI_API_KEY"
+          [ -n "$GROQ_API_KEY" ] || missing="$missing GROQ_API_KEY"
           if [ "$AUTO_PUBLISH" = "true" ]; then
             [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
             [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
@@ -63,7 +63,7 @@ jobs:
         if: steps.preflight.outputs.ready == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
           ffmpeg -hide_banner -filters 2>/dev/null | grep -q subtitles
 
       - name: Install Python dependencies
@@ -87,20 +87,21 @@ jobs:
           YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
           YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
           YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'false' }}
+          AUTO_PUBLISH: ${{ vars.AUTO_PUBLISH || 'true' }}
           MAX_UPLOADS_PER_DAY: ${{ vars.MAX_UPLOADS_PER_DAY || '2' }}
           MAX_CANDIDATES: ${{ vars.MAX_CANDIDATES || '35' }}
           MAX_SEARCHES_PER_RUN: ${{ vars.MAX_SEARCHES_PER_RUN || '4' }}
           MAX_CREATOR_CHANNELS_PER_RUN: ${{ vars.MAX_CREATOR_CHANNELS_PER_RUN || '4' }}
           HISTORY_RETENTION_DAYS: ${{ vars.HISTORY_RETENTION_DAYS || '21' }}
           MAX_SOURCE_AGE_DAYS: ${{ vars.MAX_SOURCE_AGE_DAYS || '14' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          LOCAL_TTS_VOICE: ${{ vars.LOCAL_TTS_VOICE || 'en-us+m3' }}
           MIN_SCRIPT_QUALITY: ${{ vars.MIN_SCRIPT_QUALITY || '70' }}
           YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
           YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
           YOUTUBE_SEARCH_QUERIES: ${{ vars.YOUTUBE_SEARCH_QUERIES || 'creator economy|YouTube challenge|AI creators|gaming creator|business creator|creator strategy|viral storytelling|technology creator' }}
-          OPENAI_MODEL: ${{ vars.OPENAI_MODEL || 'gpt-4o-mini' }}
-          OPENAI_TTS_MODEL: ${{ vars.OPENAI_TTS_MODEL || 'gpt-4o-mini-tts' }}
-          OPENAI_TTS_VOICE: ${{ vars.OPENAI_TTS_VOICE || 'coral' }}
+          GROQ_MODEL: ${{ vars.GROQ_MODEL || 'openai/gpt-oss-20b' }}
+          LOCAL_TTS_VOICE: ${{ vars.LOCAL_TTS_VOICE || 'en-us+m3' }}
           VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
           VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
         run: python -m trendforge.pipeline
