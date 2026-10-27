@@ -89,14 +89,15 @@ python -m trendforge.series \
     --rights-confirmed \
     --count 5 \
     --part-seconds 55 \
-    --overlay-seconds 2 2>>"$TRENDFORGE_LOG" || {
+    --overlay-seconds 2 \
+    --groq-api-key "${GROQ_API_KEY:-}" 2>>"$TRENDFORGE_LOG" || {
     log "ERROR: Series build failed. Exiting."
     exit 1
 }
 log "Series built successfully."
 
-# Step 4: Publish to YouTube (if OAuth configured)
-if [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ] && [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ]; then
+# Step 4: Publish to YouTube (if OAuth configured and auto-publish enabled)
+if [ "${AUTO_PUBLISH:-false}" = "true" ] && [ -n "${YOUTUBE_REFRESH_TOKEN:-}" ] && [ -n "${YOUTUBE_CLIENT_ID:-}" ] && [ -n "${YOUTUBE_CLIENT_SECRET:-}" ]; then
     log "Step 4: Publishing Shorts to YouTube..."
     python - <<'PY' 2>>"$TRENDFORGE_LOG"
 import json, os

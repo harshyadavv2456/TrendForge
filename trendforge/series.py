@@ -1,10 +1,10 @@
 """Build connected YouTube Shorts series from sequential source segments.
 
-Each part is its own Shorts-compliant clip (<=60s): a sequential source
-segment with a fast animated "PART N / M" overlay that fades in and out
-during the first ~2 seconds, then the video plays normally. Parts tell a
-continuous story so viewers watch the whole series, but each part publishes
-as a standalone Short.
+Each part is its own Shorts-compliant clip (<=60s): a highlight moment
+from the source video with a fast animated "PART N / M" overlay that
+fades in and out during the first ~2 seconds, then the video plays
+normally. Parts use scene-cut detection + transcript/heuristic scoring
+to find actual watchable moments, not boring intros.
 """
 from __future__ import annotations
 
@@ -15,7 +15,16 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .clipper import ClipCandidate, _probe, _run, render_clip
+from .clipper import (
+    ClipCandidate,
+    _probe,
+    _run,
+    _select_non_overlapping,
+    build_candidates,
+    detect_scene_cuts,
+    render_clip,
+    transcribe_source,
+)
 
 LOG = logging.getLogger("trendforge.series")
 
@@ -119,7 +128,7 @@ def _add_part_overlay(
                 f"fade=t=in:st=0:d=0.3:alpha=1,"
                 f"fade=t=out:st={OVERLAY_SECONDS - 0.3}:d=0.3:alpha=1[badge];"
                 "[0:v][badge]overlay=(W-w)/2:(H-h)/2-120:enable="
-                f"'between(t,0,{OVERLAY_SECONDS})':format=auto[v]"
+                f"(between(t\\,0\\,{OVERLAY_SECONDS}))[v]"
             ),
             "-map", "[v]", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",
@@ -142,11 +151,14 @@ def build_series(
     part_seconds: int = DEFAULT_PART_SECONDS,
     count: int = 5,
     overlay_seconds: float = OVERLAY_SECONDS,
+    groq_api_key: str = "",
 ) -> dict[str, Any]:
-    """Render sequential source segments as individual Shorts series parts.
+    """Render highlight moments from source footage as individual Shorts series parts.
 
-    Each part is a separate MP4 under SHORTS_MAX_SECONDS, with a fast animated
-    "PART N / M" overlay on the first ~2 seconds so viewers engage immediately.
+    Uses scene-cut detection and transcript/heuristic scoring to find actual
+    watchable moments — not boring intros. Each part is a separate MP4 under
+    SHORTS_MAX_SECONDS with a fast animated "PART N / M" overlay on the first
+    ~2 seconds.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     workdir = output_dir / ".work"
@@ -155,25 +167,29 @@ def build_series(
     metadata = _probe(source)
     duration = float(metadata["duration_seconds"])
 
-    # Sequential, back-to-back segments so the parts flow as a series.
-    segments: list[tuple[float, float]] = []
-    start = 0.0
-    for _ in range(count):
-        seg_end = min(duration, start + part_seconds)
-        if seg_end - start < 10:
-            break
-        segments.append((start, seg_end))
-        start = seg_end
-        if start >= duration:
-            break
+    # Detect scene changes for highlight moment selection.
+    cuts = detect_scene_cuts(source, duration)
 
-    if not segments:
-        raise ValueError("Source video is too short to build a series.")
+    # Optional transcript-aware scoring when Groq API key is available.
+    transcript: list[Any] = []
+    try:
+        transcript = transcribe_source(source, groq_api_key, workdir)
+    except Exception as exc:  # noqa: BLE001
+        LOG.warning("Transcription unavailable; using local scene heuristics: %s", exc)
+        transcript = []
 
-    total = len(segments)
+    # Build scored candidates across the whole video, then pick the best
+    # non-overlapping moments — not sequential slices from the start.
+    candidates = build_candidates(duration, part_seconds, transcript, cuts)
+    selected = _select_non_overlapping(candidates, count)
+
+    if not selected:
+        raise ValueError("Source video has no usable highlight moments.")
+
+    total = len(selected)
     outputs: list[dict[str, Any]] = []
 
-    for index, (seg_start, seg_end) in enumerate(segments, start=1):
+    for index, candidate in enumerate(selected, start=1):
         part_stem = f"part-{index:02d}"
         raw_segment = workdir / f"{part_stem}-raw.mp4"
         overlay_png = workdir / f"{part_stem}-badge.png"
@@ -181,7 +197,6 @@ def build_series(
 
         _make_part_overlay(index, total, title, overlay_png)
 
-        candidate = ClipCandidate(seg_start, seg_end, 0.0, "", 0)
         render_clip(
             source, candidate, [], raw_segment,
             creator, title, source_url,
@@ -201,8 +216,8 @@ def build_series(
             "size_bytes": part_path.stat().st_size,
             "part": index,
             "total": total,
-            "source_start_seconds": round(seg_start, 3),
-            "source_end_seconds": round(seg_end, 3),
+            "source_start_seconds": round(candidate.start, 3),
+            "source_end_seconds": round(candidate.end, 3),
             "source_url": source_url,
             "source_creator": creator,
             "source_title": title,
@@ -248,6 +263,7 @@ def main() -> int:
     parser.add_argument("--count", type=int, default=5, help="Number of parts in the series")
     parser.add_argument("--part-seconds", type=int, default=DEFAULT_PART_SECONDS, help="Seconds per source segment")
     parser.add_argument("--overlay-seconds", type=float, default=OVERLAY_SECONDS, help="Seconds the PART badge shows")
+    parser.add_argument("--groq-api-key", type=str, default="", help="Groq API key for transcript-aware ranking")
     args = parser.parse_args()
 
     if not args.rights_confirmed:
@@ -266,6 +282,7 @@ def main() -> int:
             part_seconds=args.part_seconds,
             count=args.count,
             overlay_seconds=args.overlay_seconds,
+            groq_api_key=args.groq_api_key,
         )
         print(json.dumps(result, indent=2, ensure_ascii=False))
         return 0
