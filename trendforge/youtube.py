@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from typing import Any
+import logging
 import requests
 
 from .config import Settings
@@ -11,6 +12,7 @@ from .state import utc_now_iso
 
 API = "https://www.googleapis.com/youtube/v3"
 TIMEOUT = 25
+LOG = logging.getLogger("trendforge.youtube")
 
 
 class YouTubeAPIError(RuntimeError):
@@ -43,7 +45,7 @@ def _add_region(mapping: dict[str, set[str]], video_id: str, region: str) -> Non
 
 
 def fetch_candidates(settings: Settings, state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Fetch popular charts across regions plus a quota-limited rotating recent-query set."""
+    """Fetch popular regional charts, latest videos from selected creator channels, and rotating niche searches."""
     region_presence: dict[str, set[str]] = {}
     ids: set[str] = set()
     now = datetime.now(timezone.utc)
@@ -66,6 +68,61 @@ def fetch_candidates(settings: Settings, state: dict[str, Any]) -> list[dict[str
             ids.add(str(video_id))
             _add_region(region_presence, str(video_id), region)
 
+    # Resolve a small set of actual creator channels, then rotate through their newest uploads.
+    # Channel IDs are cached in the public state file to avoid resolving handles on every run.
+    handles = settings.creator_handles
+    creator_cache = state.setdefault("creator_channels", {})
+    if handles:
+        start = int(state.get("creator_cursor", 0)) % len(handles)
+        take = min(settings.max_creator_channels_per_run, len(handles))
+        selected_handles = [handles[(start + i) % len(handles)] for i in range(take)]
+        state["creator_cursor"] = (start + take) % len(handles)
+        published_after = (now - timedelta(days=14)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        discovery_region = settings.regions[0] if settings.regions else "US"
+        for handle in selected_handles:
+            cached = creator_cache.get(handle, {})
+            channel_id = cached.get("channel_id") if isinstance(cached, dict) else None
+            if not channel_id:
+                payload = _get(
+                    settings,
+                    "channels",
+                    {"part": "snippet,statistics", "forHandle": handle},
+                )
+                channel = next(iter(payload.get("items", [])), None)
+                if not channel:
+                    LOG.warning("Could not resolve configured creator handle @%s; it will be retried later.", handle)
+                    continue
+                channel_id = str(channel.get("id", ""))
+                creator_cache[handle] = {
+                    "channel_id": channel_id,
+                    "channel_title": str((channel.get("snippet") or {}).get("title", handle))[:120],
+                    "last_resolved": utc_now_iso(),
+                }
+            if not channel_id:
+                continue
+            payload = _get(
+                settings,
+                "search",
+                {
+                    "part": "snippet",
+                    "type": "video",
+                    "order": "date",
+                    "channelId": channel_id,
+                    "maxResults": 5,
+                    "publishedAfter": published_after,
+                    "regionCode": discovery_region,
+                    "relevanceLanguage": "en",
+                    "safeSearch": "moderate",
+                },
+            )
+            for item in payload.get("items", []):
+                video_id = (item.get("id") or {}).get("videoId")
+                if video_id:
+                    ids.add(str(video_id))
+                    _add_region(region_presence, str(video_id), discovery_region)
+
+    # Broad niche searches complement channel-specific monitoring. Query values rotate to
+    # keep API usage bounded instead of spending quota on every search term every run.
     queries = settings.search_queries
     if queries:
         start = int(state.get("query_cursor", 0)) % len(queries)
