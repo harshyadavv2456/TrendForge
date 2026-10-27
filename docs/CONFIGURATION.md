@@ -1,6 +1,6 @@
 # Configuration reference
 
-All non-secret settings can be supplied as GitHub Actions repository **variables** or local environment variables. The workflow's secret values are separate. YouTube discovery deliberately preserves native API ordering and avoids derived cross-channel scoring.
+All non-secret settings can be supplied as GitHub Actions repository **variables** or local environment variables. The workflow's secret values are separate. Groq is used only for script generation; eSpeak NG synthesizes narration locally to avoid paid TTS. YouTube discovery deliberately preserves native API ordering and avoids derived cross-channel scoring.
 
 | Name | Default | Meaning |
 | --- | --- | --- |
@@ -29,7 +29,7 @@ TrendForge mixes YouTube's native mostPopular chart order for each region, the l
 
 ## Ordering and freshness
 
-TrendForge does not calculate its own cross-channel trend score, view-velocity metric, commercial-fit score or creator-revenue estimate from YouTube API data. It preserves YouTube's own popular-chart order, latest-upload order, and recent query results ordered by YouTube's viewCount field. It rejects sources outside MAX_SOURCE_AGE_DAYS and interleaves the different source lists so one list cannot fill the whole candidate set. Public view counts are displayed as returned by the API.
+TrendForge does not calculate its own cross-channel trend score, view-velocity metric, commercial-fit score or creator-revenue estimate from YouTube API data. It preserves YouTube's own popular-chart order, latest-upload order, and recent query results ordered by YouTube's viewCount field. It rejects sources outside MAX_SOURCE_AGE_DAYS and interleaves the different source lists so one list cannot fill the whole candidate set. YouTube API data is not converted into custom cross-channel scores or revenue estimates. Public metadata shown in workflow artifacts is short-lived. Public view counts are not embedded in generated video.
 
 ## Content volume
 
