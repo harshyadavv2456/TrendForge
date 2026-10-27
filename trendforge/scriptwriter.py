@@ -54,6 +54,7 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
             "Do not invent creator earnings, subscribers, motives, statements, private information, or unseen scenes.",
             "If you propose why a format may attract attention, label it as analysis or a hypothesis, not a verified fact.",
             "Do not present the source video's title as proof of what happened inside the video.",
+            "Commercial-fit scores are weak title/category heuristics, not creator revenue, RPM, CPM, sponsorship value, or verified audience purchasing intent.",
             "No fake urgency, fabricated records, financial promises, misleading titles or keyword stuffing.",
             "The video must provide a distinct insight, not a generic summary or interchangeable template.",
             "Total spoken narration must be 95–135 words, divided into 4 scenes with 20–40 spoken words each.",
@@ -147,13 +148,15 @@ def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, 
     if len(title) < 12:
         raise ScriptGenerationError("Generated title is missing or too short.")
     tags = []
-    for tag in result.get("tags", []):
+    raw_tags = result.get("tags", [])
+    for tag in (raw_tags if isinstance(raw_tags, list) else []):
         tag = re.sub(r"[^\w\s-]", "", str(tag)).strip()
         if tag and tag.lower() not in {t.lower() for t in tags}:
             tags.append(tag[:45])
     tags = tags[:10]
     hashtags = []
-    for tag in result.get("hashtags", []):
+    raw_hashtags = result.get("hashtags", [])
+    for tag in (raw_hashtags if isinstance(raw_hashtags, list) else []):
         tag = str(tag).strip()
         if not re.fullmatch(r"#[A-Za-z0-9_]{2,30}", tag):
             continue
