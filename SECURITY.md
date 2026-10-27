@@ -2,7 +2,7 @@
 
 ## Secrets
 
-Never commit API keys, Google OAuth client JSON, OAuth refresh/access tokens, OpenAI keys, .env files, or generated credential files. Add credentials only through GitHub Actions repository secrets and rotate them immediately if disclosed.
+Never commit API keys (including GROQ_API_KEY and YOUTUBE_API_KEY), Google OAuth client JSON, OAuth refresh/access tokens, Groq keys, .env files, or generated credential files. Add credentials only through GitHub Actions repository secrets and rotate them immediately if disclosed.
 
 TrendForge's public trend-history file intentionally contains only public metadata, score estimates, source identifiers, and records of uploads made to your own channel.
 
