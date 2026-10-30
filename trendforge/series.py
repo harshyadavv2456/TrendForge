@@ -31,7 +31,8 @@ LOG = logging.getLogger("trendforge.series")
 WIDTH, HEIGHT = 1080, 1920
 SHORTS_MAX_SECONDS = 60
 DEFAULT_PART_SECONDS = 55  # content seconds; overlay rides on top, no extra time
-OVERLAY_SECONDS = 2.0      # how long the PART badge stays on screen
+OVERLAY_START_SECONDS = 1.0  # badge appears after the hook
+OVERLAY_SECONDS = 3.0        # how long the corner PART badge stays on screen
 
 # Candidate system font paths (macOS first, then Linux fallbacks)
 FONT_PATHS = [
@@ -62,11 +63,12 @@ def _centered_x(draw: ImageDraw.ImageDraw, text: str, font: Any, cx: int) -> int
 def _make_part_overlay(part: int, total: int, text: str, output: Path) -> None:
     """Render a semi-transparent PART N / M badge PNG with alpha channel."""
     pad = 40
-    font_big = _load_font(100, bold=True)
-    font_small = _load_font(36, bold=False)
+    pad = 24
+    font_big = _load_font(56, bold=True)
+    font_small = _load_font(1, bold=False)
 
-    part_text = f"PART {part} / {total}"
-    subtitle = str(text)[:60]
+    part_text = f"PART {part}/{total}"
+    subtitle = ""
 
     # Measure text to size the badge pill.
     dummy = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
@@ -112,7 +114,7 @@ def _add_part_overlay(
     total: int,
     title: str,
 ) -> None:
-    """Composite the PART badge onto the segment for the first OVERLAY_SECONDS.
+    """Composite a small corner PART badge from OVERLAY_START_SECONDS for OVERLAY_SECONDS.
 
     The badge fades in over 0.3s, holds, then fades out over 0.3s. After that
     the video plays normally with no overlay.
@@ -121,14 +123,15 @@ def _add_part_overlay(
         [
             "ffmpeg", "-y",
             "-i", str(segment_path),
+            "-loop", "1", "-framerate", "30", "-t", str(OVERLAY_START_SECONDS + OVERLAY_SECONDS + 0.5),
             "-i", str(overlay_png),
             "-filter_complex",
             (
                 "[1:v]format=rgba,"
-                f"fade=t=in:st=0:d=0.3:alpha=1,"
-                f"fade=t=out:st={OVERLAY_SECONDS - 0.3}:d=0.3:alpha=1[badge];"
-                "[0:v][badge]overlay=(W-w)/2:(H-h)/2-120:enable="
-                f"(between(t\\,0\\,{OVERLAY_SECONDS}))[v]"
+                f"fade=t=in:st={OVERLAY_START_SECONDS}:d=0.3:alpha=1,"
+                f"fade=t=out:st={OVERLAY_START_SECONDS + OVERLAY_SECONDS - 0.3}:d=0.3:alpha=1[badge];"
+                "[0:v][badge]overlay=W-w-40:200:eof_action=pass:enable="
+                f"'between(t,{OVERLAY_START_SECONDS},{OVERLAY_START_SECONDS + OVERLAY_SECONDS})'[v]"
             ),
             "-map", "[v]", "-map", "0:a?",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22",

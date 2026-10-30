@@ -1,246 +1,83 @@
-name: TrendForge Autonomous Shorts
+name: TrendForge Clip Builder (no upload)
 
+# Compute only: discovery (~10-20 quota units) + clipping, every 2 hours.
+# Finished clips are queued as a GitHub prerelease "clips-<source_id>".
+# Assets: part-NN.mp4 + manifest.json + metadata.json. This workflow never uploads to YouTube.
 on:
   schedule:
-    - cron: '0 */6 * * *'   # every 6 hours UTC
+    - cron: '0 */2 * * *'
   workflow_dispatch:
-    inputs:
-      publish:
-        description: Upload generated Shorts to YouTube (requires OAuth secrets)
-        required: false
-        type: boolean
-        default: false
-      count:
-        description: Number of series parts
-        required: false
-        type: choice
-        options: ["3", "5", "10"]
-        default: "5"
-      part_seconds:
-        description: Seconds per part
-        required: false
-        type: choice
-        options: ["30", "45", "55"]
-        default: "55"
-      source_media_url:
-        description: Direct HTTPS MP4 URL (works reliably; optional if yt-dlp download succeeds)
-        required: false
-        type: string
 
 permissions:
-  contents: read
+  contents: write   # create queue prereleases
 
 concurrency:
-  group: trendforge-autonomous-shorts
+  group: trendforge-clip-builder
   cancel-in-progress: false
 
 jobs:
-  autonomous-shorts:
+  build-clips:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - name: Validate autonomous rights and publishing credentials
-        env:
-          PUBLISH: ${{ inputs.publish }}
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-        run: |
-          echo "::notice::Autonomous mode: clipping authorized source footage into vertical Shorts."
-          echo "::notice::The operator is responsible for verifying reuse rights for any footage processed."
-          if [ "$PUBLISH" = "true" ]; then
-            missing=""
-            [ -n "$YOUTUBE_CLIENT_ID" ] || missing="$missing YOUTUBE_CLIENT_ID"
-            [ -n "$YOUTUBE_CLIENT_SECRET" ] || missing="$missing YOUTUBE_CLIENT_SECRET"
-            [ -n "$YOUTUBE_REFRESH_TOKEN" ] || missing="$missing YOUTUBE_REFRESH_TOKEN"
-            if [ -n "$missing" ]; then
-              echo "::error::Publishing requested but OAuth secrets are missing:$missing"
-              exit 1
-            fi
-          fi
-
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
 
+      - name: Check queue (skip everything if full)
+        id: queue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          n=$(gh release list --limit 100 --json tagName,isPrerelease \
+              --jq '[.[] | select(.isPrerelease and (.tagName|startswith("clips-")))] | length')
+          echo "pending=$n" >> "$GITHUB_OUTPUT"
+          echo "Unpublished series queued: $n"
+
       - uses: actions/setup-python@v5
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
         with:
           python-version: "3.11"
           cache: pip
 
-      - name: Install FFmpeg, yt-dlp, and Python dependencies
+      - name: Restore discovery state (uploads-playlist cache, cursors)
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/state.json
+            data/quota_ledger.json
+          key: trendforge-state-${{ github.run_id }}
+          restore-keys: trendforge-state-
+
+      - name: Install dependencies
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
-          python -m pip install --upgrade pip
-          pip install -r requirements-clipper.txt yt-dlp pytest
+          pip install -r requirements-clipper.txt yt-dlp
 
-      - name: Run clipper unit tests
-        run: pytest -q tests/test_clipper.py
-
-      - name: Discover trending YouTube candidates
-        id: discover
+      - name: Discover, clip, and queue as prerelease
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: |
-          mkdir -p outputs
-          if [ -z "$YOUTUBE_API_KEY" ]; then
-            echo "YOUTUBE_API_KEY not set; falling back to demo source video."
-            echo "source_url=https://www.youtube.com/watch?v=jNQXAC9IVRw" >> $GITHUB_OUTPUT
-            echo "source_title=Me at the zoo" >> $GITHUB_OUTPUT
-            echo "source_creator=Jawed Karim" >> $GITHUB_OUTPUT
-            echo "source_media_url=" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          python -m trendforge.discover --count "${{ inputs.count }}" --json > outputs/discovery.json
-          python - <<'PY'
-          import json, os
-          with open("outputs/discovery.json") as f:
-              cands = json.load(f)
-          if not cands:
-              raise SystemExit("No trending candidates found")
-          top = cands[0]
-          print(f"Selected: {top['video_id']} — {top['title']} by {top['creator']}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-              out.write(f"source_url={top['url']}\n")
-              out.write(f"source_title={top['title']}\n")
-              out.write(f"source_creator={top['creator']}\n")
-              out.write("source_media_url=\n")
-          PY
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          QUEUE_MAX_SERIES: ${{ vars.QUEUE_MAX_SERIES || '1' }}
+          SERIES_PARTS: ${{ vars.SERIES_PARTS || '5' }}
+          PART_SECONDS: ${{ vars.PART_SECONDS || '55' }}
+          YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
+          YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
+        run: bash scripts/ci_build.sh
 
-      - name: Download source video (direct media URL or yt-dlp fallback)
-        id: download
-        env:
-          SOURCE_MEDIA_URL: ${{ inputs.source_media_url }}
-          SOURCE_URL: ${{ steps.discover.outputs.source_url }}
-          SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
-          SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
-          SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
-          SOURCE_RIGHTS_CONFIRMED: "true"
-        run: |
-          mkdir -p outputs/source
-          python - <<'PY'
-          import os, sys
-          from pathlib import Path
-          from trendforge.clipper import download_source, ClipError
-
-          media_url = os.getenv("SOURCE_MEDIA_URL", "").strip()
-          source_url = os.getenv("SOURCE_URL", "").strip()
-
-          if media_url:
-              try:
-                  path = download_source(media_url, Path("outputs/source/source-video.mp4"), rights_confirmed=True)
-                  print(f"Direct media URL downloaded: {path}")
-                  with open(os.environ["GITHUB_OUTPUT"], "a") as out:
-                      out.write("source_path=outputs/source/source-video.mp4\n")
-                      out.write("downloaded=true\n")
-              except ClipError as exc:
-                  print(f"Direct media URL download failed: {exc}")
-                  sys.exit(1)
-          elif source_url and ("youtube.com/" in source_url or "youtu.be/" in source_url):
-              print("Attempting yt-dlp download from YouTube (best-effort).")
-              sys.exit(0)  # handled by yt-dlp step below
-          else:
-              print("No source media URL provided and no YouTube URL to download.")
-              sys.exit(1)
-          PY
-
-      - name: Download via yt-dlp (YouTube fallback)
-        if: steps.download.outputs.downloaded != 'true' && env.SOURCE_URL != ''
-        env:
-          SOURCE_URL: ${{ steps.discover.outputs.source_url }}
-        run: |
-          if yt-dlp \
-              --no-check-certificates \
-              --no-warnings \
-              --quiet \
-              --no-playlist \
-              --format "best[height<=720][ext=mp4]/best" \
-              --extractor-args "youtube:player_client=android" \
-              --output "outputs/source/source-video.%(ext)s" \
-              "$SOURCE_URL"; then
-            echo "yt-dlp download succeeded."
-            echo "source_path=outputs/source/source-video.mp4" >> $GITHUB_OUTPUT
-            echo "downloaded=true" >> $GITHUB_OUTPUT
-          else
-            echo "::warning::yt-dlp download failed (YouTube bot detection on CI is common)."
-            echo "Provide source_media_url (direct HTTPS MP4 URL) as a workflow input for reliable downloads."
-            echo "downloaded=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Build Shorts series from downloaded source
-        if: steps.download.outputs.downloaded == 'true'
-        env:
-          SOURCE_VIDEO_URL: ${{ steps.discover.outputs.source_url }}
-          SOURCE_VIDEO_TITLE: ${{ steps.discover.outputs.source_title }}
-          SOURCE_VIDEO_CREATOR: ${{ steps.discover.outputs.source_creator }}
-          SOURCE_RIGHTS_CONFIRMED: "true"
-        run: |
-          if [ -n "${{ steps.download.outputs.source_path }}" ]; then
-            INPUT="${{ steps.download.outputs.source_path }}"
-          else
-            INPUT="outputs/source/source-video.mp4"
-          fi
-          python -m trendforge.series \
-            --input "$INPUT" \
-            --output-dir outputs/series \
-            --source-url "$SOURCE_VIDEO_URL" \
-            --title "$SOURCE_VIDEO_TITLE" \
-            --creator "$SOURCE_VIDEO_CREATOR" \
-            --rights-confirmed \
-            --count ${{ inputs.count }} \
-            --part-seconds ${{ inputs.part_seconds }} \
-            --overlay-seconds 2
-
-      - name: Publish Shorts to YouTube
-        if: ${{ inputs.publish == 'true' && steps.download.outputs.downloaded == 'true' }}
-        env:
-          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
-          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
-          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
-          VIDEO_PRIVACY_STATUS: ${{ vars.VIDEO_PRIVACY_STATUS || 'public' }}
-          VIDEO_CATEGORY_ID: ${{ vars.VIDEO_CATEGORY_ID || '24' }}
-          VIDEO_LANGUAGE: ${{ vars.VIDEO_LANGUAGE || 'en' }}
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from trendforge.config import Settings
-          from trendforge.publisher import upload_short
-
-          settings = Settings.from_env()
-          manifest_path = Path("outputs/series/series-manifest.json")
-          manifest = json.loads(manifest_path.read_text())
-          source = manifest["source"]
-
-          for part in manifest["parts"]:
-              p = Path(part["path"])
-              script = {
-                  "title": f"{source['title']} | Part {part['part']}/{part['total']}"[:90],
-                  "description": (
-                      f"{source['title']} — Part {part['part']} of {part['total']} from {source['creator']}.\n\n"
-                      f"Source video: {source['url']}\n\n"
-                      "Original footage clipped into vertical Shorts with attribution."
-                  )[:4800],
-                  "tags": ["shorts", "highlight", "clip", source["creator"][:40]],
-                  "source": {
-                      "url": source["url"],
-                      "creator": source["creator"],
-                      "title": source["title"],
-                  },
-              }
-              result = upload_short(settings, p, script, publish=True)
-              print(f"Part {part['part']}: {result['url']} ({result['privacy_status']})")
-          PY
-
-      - name: Upload series parts and manifest as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Save discovery state
+        if: always() && steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        uses: actions/cache/save@v4
         with:
-          name: trendforge-series-parts-${{ github.run_number }}
           path: |
-            outputs/series/part-*.mp4
-            outputs/series/series-manifest.json
-          if-no-files-found: ignore
-          retention-days: 7
+            data/state.json
+            data/quota_ledger.json
+          key: trendforge-state-${{ github.run_id }}

@@ -1,4 +1,4 @@
-"""YouTube Data API discovery using native chart and search ordering only."""
+"""YouTube Data API discovery: mostPopular charts + creators' uploads playlists (no search.list)."""
 from __future__ import annotations
 
 import re
@@ -35,7 +35,13 @@ class YouTubeAPIError(RuntimeError):
     pass
 
 
+UNIT_COST = {"search": 100}  # everything else used here costs 1 unit
+UNITS_USED = 0
+
+
 def _get(settings: Settings, endpoint: str, params: dict[str, Any]) -> dict[str, Any]:
+    global UNITS_USED
+    UNITS_USED += UNIT_COST.get(endpoint, 1)
     query = dict(params)
     query["key"] = settings.youtube_api_key
     try:
@@ -117,87 +123,52 @@ def fetch_candidates(settings: Settings, state: dict[str, Any]) -> list[dict[str
         if bucket:
             buckets.append(bucket)
 
-    # Resolve only the rotating subset of creator handles on each run. Channel IDs
-    # are not cached; this keeps persisted state independent of other creators' API data.
+    # Creators: resolve @handle -> uploads playlist once (cached in state), then read
+    # playlistItems (1 unit) instead of search.list (100 units).
     handles = settings.creator_handles
+    playlists: dict[str, str] = state.setdefault("uploads_playlists", {})
     if handles:
         start = int(state.get("creator_cursor", 0)) % len(handles)
         take = min(settings.max_creator_channels_per_run, len(handles))
         selected_handles = [handles[(start + i) % len(handles)] for i in range(take)]
         state["creator_cursor"] = (start + take) % len(handles)
-        published_after = (now - timedelta(days=14)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        discovery_region = settings.regions[0] if settings.regions else "US"
+        cutoff = now - timedelta(days=14)
         for handle in selected_handles:
-            payload = _get(
-                settings,
-                "channels",
-                {"part": "snippet", "forHandle": handle},
-            )
-            channel = next(iter(payload.get("items", [])), None)
-            if not channel or not channel.get("id"):
-                LOG.warning("Could not resolve configured creator handle @%s; it will be retried later.", handle)
-                continue
-            channel_id = str(channel["id"])
-            channel_title = str((channel.get("snippet") or {}).get("title", handle))[:100]
+            playlist_id = playlists.get(handle)
+            if not playlist_id:
+                payload = _get(settings, "channels", {"part": "contentDetails", "forHandle": handle})
+                channel = next(iter(payload.get("items", [])), None)
+                if not channel or not channel.get("id"):
+                    LOG.warning("Could not resolve creator handle @%s; it will be retried later.", handle)
+                    continue
+                playlist_id = (
+                    ((channel.get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads")
+                    or "UU" + str(channel["id"])[2:]
+                )
+                playlists[handle] = playlist_id
             latest = _get(
                 settings,
-                "search",
-                {
-                    "part": "snippet",
-                    "type": "video",
-                    "order": "date",
-                    "channelId": channel_id,
-                    "maxResults": 5,
-                    "publishedAfter": published_after,
-                    "regionCode": discovery_region,
-                    "relevanceLanguage": "en",
-                    "safeSearch": "moderate",
-                },
+                "playlistItems",
+                {"part": "contentDetails", "playlistId": playlist_id, "maxResults": 5},
             )
+            items = []
+            for item in latest.get("items", []):
+                details = item.get("contentDetails") or {}
+                stamp = details.get("videoPublishedAt")
+                if stamp:
+                    try:
+                        if datetime.fromisoformat(str(stamp).replace("Z", "+00:00")) < cutoff:
+                            continue
+                    except ValueError:
+                        pass
+                items.append(item)
             bucket = _source_bucket(
-                latest.get("items", []),
+                items,
                 "creator_latest",
-                f"Latest uploads from {channel_title} (@{handle})",
-                lambda item: (item.get("id") or {}).get("videoId"),
-                region=discovery_region,
+                f"Latest uploads from @{handle}",
+                lambda item: (item.get("contentDetails") or {}).get("videoId"),
+                region=settings.regions[0] if settings.regions else "US",
                 max_items=5,
-            )
-            if bucket:
-                buckets.append(bucket)
-
-    # Broad searches use YouTube's own view-count sorting for videos published recently.
-    # The source ordering is preserved, rather than re-scoring API data with custom metrics.
-    queries = settings.search_queries
-    if queries:
-        start = int(state.get("query_cursor", 0)) % len(queries)
-        take = min(settings.max_searches_per_run, len(queries))
-        selected_queries = [queries[(start + i) % len(queries)] for i in range(take)]
-        state["query_cursor"] = (start + take) % len(queries)
-        published_after = (now - timedelta(days=7)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-        discovery_region = settings.regions[0] if settings.regions else "US"
-        for query in selected_queries:
-            payload = _get(
-                settings,
-                "search",
-                {
-                    "part": "snippet",
-                    "type": "video",
-                    "order": "viewCount",
-                    "q": query,
-                    "maxResults": 10,
-                    "publishedAfter": published_after,
-                    "regionCode": discovery_region,
-                    "relevanceLanguage": "en",
-                    "safeSearch": "moderate",
-                },
-            )
-            bucket = _source_bucket(
-                payload.get("items", []),
-                "niche_recent_top_views",
-                f"Recent top-view search · {query}",
-                lambda item: (item.get("id") or {}).get("videoId"),
-                region=discovery_region,
-                max_items=10,
             )
             if bucket:
                 buckets.append(bucket)

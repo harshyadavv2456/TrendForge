@@ -8,8 +8,26 @@ import requests
 from .config import Settings
 
 
+import logging
+
+LOG = logging.getLogger("trendforge.publisher")
+QUOTA_REASONS = {"quotaExceeded", "uploadLimitExceeded", "dailyLimitExceeded", "rateLimitExceeded"}
+
+
 class PublishError(RuntimeError):
     pass
+
+
+class QuotaExceededError(PublishError):
+    """YouTube refused the upload for quota/upload-limit reasons. Do not retry today."""
+
+
+def _error_reasons(response: requests.Response) -> set[str]:
+    try:
+        errors = response.json().get("error", {}).get("errors", []) or []
+        return {str(e.get("reason", "")) for e in errors}
+    except (ValueError, AttributeError):
+        return set()
 
 
 def _access_token(settings: Settings) -> str:
@@ -104,6 +122,9 @@ def upload_short(
             detail = init.json().get("error", {}).get("message", init.text[:500])
         except ValueError:
             detail = init.text[:500]
+        reasons = _error_reasons(init)
+        if init.status_code in (403, 429) and reasons & QUOTA_REASONS:
+            raise QuotaExceededError(f"YouTube upload refused ({', '.join(sorted(reasons))}): {detail}")
         if init.status_code == 403:
             detail = f"{detail}. Check channel authorization, YouTube Data API status, and upload quota."
         raise PublishError(f"YouTube upload session returned HTTP {init.status_code}: {detail}")
@@ -126,6 +147,8 @@ def upload_short(
             detail = uploaded.json().get("error", {}).get("message", uploaded.text[:500])
         except ValueError:
             detail = uploaded.text[:500]
+        if uploaded.status_code in (403, 429) and _error_reasons(uploaded) & QUOTA_REASONS:
+            raise QuotaExceededError(f"YouTube media upload refused for quota: {detail}")
         raise PublishError(f"YouTube media upload returned HTTP {uploaded.status_code}: {detail}")
     try:
         video = uploaded.json()
@@ -136,6 +159,12 @@ def upload_short(
         raise PublishError("Upload response did not include a video ID.")
     status = video.get("status", {})
     visibility = status.get("privacyStatus", "unknown")
+    if visibility != "public":
+        LOG.warning(
+            "Uploaded video %s returned privacyStatus=%s (requested %s). "
+            "Check YouTube Studio and API project audit status.",
+            video_id, visibility, desired_privacy,
+        )
     return {
         "video_id": str(video_id),
         "url": f"https://www.youtube.com/watch?v={video_id}",

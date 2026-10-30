@@ -23,14 +23,13 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
         if endpoint == "channels":
             channel_lookups.append(params["forHandle"])
             handle = params["forHandle"]
-            return {"items": [{"id": f"id_{handle}", "snippet": {"title": handle}}]}
-        if endpoint == "search" and params.get("channelId"):
-            search_channels.append(params["channelId"])
-            handle = params["channelId"].removeprefix("id_")
-            return {"items": [{"id": {"videoId": f"video_{handle}"}}]}
-        if endpoint == "search" and params.get("q"):
-            assert params["order"] == "viewCount"
-            return {"items": []}
+            return {"items": [{"id": f"UC_{handle}", "contentDetails": {"relatedPlaylists": {"uploads": f"UU_{handle}"}}}]}
+        if endpoint == "playlistItems":
+            search_channels.append(params["playlistId"])
+            handle = params["playlistId"].removeprefix("UU_")
+            return {"items": [{"contentDetails": {"videoId": f"video_{handle}", "videoPublishedAt": published_at}}]}
+        if endpoint == "search":
+            raise AssertionError("search.list (100 units) must not be used")
         if endpoint == "videos" and params.get("id"):
             result = []
             for video_id in params["id"].split(","):
@@ -44,6 +43,7 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
                         "categoryId": "24",
                         "description": "Public metadata",
                     },
+                    "contentDetails": {"duration": "PT15M"},
                 })
             return {"items": result}
         raise AssertionError(f"Unexpected mocked API call: {endpoint}, {params}")
@@ -53,8 +53,12 @@ def test_fetch_candidates_tracks_actual_creator_channels(monkeypatch) -> None:
     candidates = youtube.fetch_candidates(settings, state)
 
     assert len(candidates) == 2
-    assert set(search_channels) == {"id_AlphaCreator", "id_BetaCreator"}
-    assert set(channel_lookups) == {"AlphaCreator", "BetaCreator"}
+    assert set(search_channels) == {"UU_AlphaCreator", "UU_BetaCreator"}
+    assert state["uploads_playlists"] == {"AlphaCreator": "UU_AlphaCreator", "BetaCreator": "UU_BetaCreator"}
+    # Second run uses the cached playlist IDs: no channels.list calls.
+    channel_lookups.clear()
+    youtube.fetch_candidates(settings, state)
+    assert channel_lookups == []
     assert state["creator_cursor"] == 0
     assert all(item["discovery"]["source_kind"] == "creator_latest" for item in candidates)
     assert all("statistics" not in item for item in candidates)

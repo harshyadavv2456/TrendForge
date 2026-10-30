@@ -522,7 +522,23 @@ def run_clipper(source: Path, output_dir: Path, *, title: str, creator: str, sou
                 "tags": ["shorts", "highlight", "clip", creator[:40]],
                 "source": {"url": source_url, "creator": creator, "title": title},
             }
-            result["upload"] = upload_short(settings, Path(result["path"]), script, publish=True)
+            from .quota import UPLOAD_UNITS, QuotaLedger
+            from .publisher import QuotaExceededError
+            ledger = QuotaLedger(settings.root / "data" / "quota_ledger.json", max_uploads_per_day=settings.max_uploads_per_day)
+            block = ledger.upload_block_reason()
+            if block:
+                LOG.warning("Clip upload skipped: %s", block)
+                break
+            try:
+                result["upload"] = upload_short(settings, Path(result["path"]), script, publish=True)
+                ledger.record(UPLOAD_UNITS, uploads=1)
+            except QuotaExceededError as exc:
+                ledger.record(UPLOAD_UNITS)
+                ledger.mark_exhausted(str(exc))
+                ledger.save()
+                LOG.error("Quota hit; stopping uploads: %s", exc)
+                break
+            ledger.save()
         (output_dir / "clip-manifest.json").write_text(json.dumps({"mode": "real-source-footage-clipping", "source_url": source_url, "clips": outputs}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     return outputs
 

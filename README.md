@@ -2,6 +2,19 @@
 
 **TrendForge can clip actual scenes from rights-cleared source footage into vertical Shorts.** The real-footage clipper finds candidate moments using scene changes and transcript signals, optionally ranks them with Groq, then cuts the original frames/audio, reframes to 9:16, adds captions, and retains source attribution.
 
+## Scheduled clip builder (GitHub Actions, no uploads)
+
+`.github/workflows/trendforge-autonomous.yml` runs every 2 hours (`0 */2 * * *`, non-overlapping):
+
+1. If an unposted series is already queued (a **prerelease** tagged `clips-<source_video_id>`), it stops: 0 quota units.
+2. Otherwise discovery: `videos.list chart=mostPopular` per region + creators' uploads playlists via `playlistItems` (channel → uploads-playlist IDs are cached), about 10–20 units. `search.list` is no longer used.
+3. Downloads the chosen source, cuts 9:16 parts (≤55 s, small `PART N/M` corner badge from 1 s), and creates a prerelease with `part-NN.mp4`, `manifest.json` and `metadata.json` (title < 60 chars, description crediting and linking the source, #Shorts + hashtags, tags).
+4. Nothing is uploaded to YouTube from Actions. After posting a series, mark it done: `gh release edit clips-<id> --prerelease=false`, and the next run builds a new one. Raise repo variable `QUEUE_MAX_SERIES` to keep more series ready.
+
+Secrets: `YOUTUBE_API_KEY` (required), `GROQ_API_KEY` (optional). Variables (optional): `QUEUE_MAX_SERIES`, `SERIES_PARTS`, `PART_SECONDS`, `YOUTUBE_REGIONS`, `YOUTUBE_CREATOR_HANDLES`.
+
+Local uploads (optional, `scripts/run_autonomous.sh` / `python -m trendforge.publish_queue publish`) go through one path that uploads at most `UPLOADS_PER_RUN` (1), enforces `MAX_UPLOADS_PER_DAY` (5) and a Pacific-day quota ledger in `data/quota_ledger.json`, and stops at once on `quotaExceeded`/`uploadLimitExceeded`.
+
 ## Run the real-footage clipper
 
 1. Open Actions → TrendForge Real-Footage Clipper → Run workflow on main.
