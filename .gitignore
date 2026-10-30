@@ -15,3 +15,7 @@ outputs/*
 !outputs/.gitkeep
 .tmp/
 .DS_Store
+logs/
+.trendforge.lock
+data/published.json
+data/quota_ledger.json

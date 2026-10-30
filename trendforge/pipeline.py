@@ -171,8 +171,23 @@ def run() -> int:
                 )
                 now_iso = utc_now_iso()
                 fingerprint = _content_hash(script["narration"])
+                from .quota import UPLOAD_UNITS, QuotaLedger
+                ledger = QuotaLedger(settings.root / "data" / "quota_ledger.json", max_uploads_per_day=settings.max_uploads_per_day)
+                block = ledger.upload_block_reason() if settings.auto_publish else None
+                if block:
+                    raise RuntimeError(f"Upload skipped by quota ledger: {block}")
                 if settings.auto_publish:
-                    uploaded = upload_short(settings, render_result["path"], script, publish=True)
+                    try:
+                        uploaded = upload_short(settings, render_result["path"], script, publish=True)
+                    except Exception as exc:
+                        from .publisher import QuotaExceededError
+                        ledger.record(UPLOAD_UNITS)
+                        if isinstance(exc, QuotaExceededError):
+                            ledger.mark_exhausted(str(exc))
+                        ledger.save()
+                        raise
+                    ledger.record(UPLOAD_UNITS, uploads=1)
+                    ledger.save()
                     state.setdefault("published", []).append({
                         "video_id": uploaded["video_id"],
                         "url": uploaded["url"],

@@ -87,6 +87,15 @@ def main() -> int:
         save_state(state_path, state)
     except Exception:
         pass
+    try:
+        from . import youtube as _yt
+        from .quota import QuotaLedger
+        ledger = QuotaLedger(settings.root / "data" / "quota_ledger.json")
+        ledger.record(_yt.UNITS_USED)
+        ledger.save()
+        print(f"Discovery used ~{_yt.UNITS_USED} quota units.", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Could not update quota ledger: {exc}", file=sys.stderr)
     return 0
 
 

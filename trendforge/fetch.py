@@ -32,7 +32,6 @@ def _download_with_ytdlp(url: str, destination: Path, *, rights_confirmed: bool)
     destination.parent.mkdir(parents=True, exist_ok=True)
     cmd = [
         ytdlp,
-        "--no-check-certificates",
         "--no-warnings",
         "--quiet",
         "--no-playlist",

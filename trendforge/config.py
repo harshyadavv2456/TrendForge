@@ -60,7 +60,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
-        root = Path(__file__).resolve().parents[1]
+        root = Path(os.getenv("TRENDFORGE_HOME") or Path(__file__).resolve().parents[1])
         regions = [r.upper() for r in _pipe_list("YOUTUBE_REGIONS", "US|GB|CA|AU")]
         regions = [r for r in regions if len(r) == 2]
         if not regions:
@@ -80,7 +80,7 @@ class Settings:
             youtube_client_secret=os.getenv("YOUTUBE_CLIENT_SECRET", "").strip(),
             youtube_refresh_token=os.getenv("YOUTUBE_REFRESH_TOKEN", "").strip(),
             auto_publish=_bool("AUTO_PUBLISH", True),
-            max_uploads_per_day=_int("MAX_UPLOADS_PER_DAY", 2, 0, 10),
+            max_uploads_per_day=_int("MAX_UPLOADS_PER_DAY", 5, 0, 6),
             max_source_age_days=_int("MAX_SOURCE_AGE_DAYS", 14, 1, 30),
             max_candidates=_int("MAX_CANDIDATES", 35, 5, 100),
             max_searches_per_run=_int("MAX_SEARCHES_PER_RUN", 4, 1, 10),
