@@ -36,9 +36,15 @@ eval "$SELECTION"
 echo "Selected: $SOURCE_TITLE by $SOURCE_CREATOR ($SOURCE_URL)"
 
 SOURCE_FILE="outputs/source/${SOURCE_ID}.mp4"
-yt-dlp --no-warnings --quiet --no-playlist \
-    --format "best[height<=1080][ext=mp4]/best[ext=mp4]/best" \
-    --output "$SOURCE_FILE" "$SOURCE_URL" || { echo "::warning::yt-dlp download failed"; exit 0; }
+OK=0
+for CLIENT in ${YTDLP_CLIENTS:-tv_simply android_vr tv web_safari mweb ios web_embedded default}; do
+    echo "yt-dlp attempt with player_client=$CLIENT"
+    if yt-dlp --no-warnings --no-playlist \
+        --extractor-args "youtube:player_client=$CLIENT" \
+        --format "best[height<=1080][ext=mp4]/bv*[height<=1080]+ba/best" --merge-output-format mp4 \
+        --output "$SOURCE_FILE" "$SOURCE_URL"; then OK=1; break; fi
+done
+[ "$OK" = 1 ] || { echo "::error::yt-dlp blocked for all player clients"; exit 1; }
 
 BUILD="outputs/series-build/${SOURCE_ID}"
 "$PY" -m trendforge.series --input "$SOURCE_FILE" --output-dir "$BUILD" \

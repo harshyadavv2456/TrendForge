@@ -57,7 +57,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
-          pip install -r requirements-clipper.txt yt-dlp
+          pip install -r requirements-clipper.txt "yt-dlp[default]" --pre -U
 
       - name: Discover, clip, and queue as prerelease
         if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
