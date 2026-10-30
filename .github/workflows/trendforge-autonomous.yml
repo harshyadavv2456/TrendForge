@@ -57,7 +57,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
-          pip install -r requirements-clipper.txt "yt-dlp[default]" --pre -U
+          pip install -r requirements-clipper.txt "yt-dlp[default]" --pre -U bgutil-ytdlp-pot-provider
+          # PO-token provider (helps yt-dlp on datacenter IPs); best-effort.
+          docker run -d --name bgutil -p 4416:4416 brainicism/bgutil-ytdlp-pot-provider || true
+          sleep 5
 
       - name: Discover, clip, and queue as prerelease
         if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
