@@ -103,7 +103,12 @@ def _make_slide(
     draw.rounded_rectangle((72, card_top, WIDTH - 72, card_bottom), radius=38, fill=(5, 9, 23, 145), outline=(*accent, 160), width=3)
     draw.rounded_rectangle((104, card_top + 34, 122, card_top + 106), radius=9, fill=(*accent, 255))
     draw.text((152, card_top + 33), "THE TAKEAWAY", font=_font(28, True), fill=(*accent, 255))
-    _draw_wrapped(draw, str(scene.get("visual", "")), (112, card_top + 125), _font(37, False), (228, 234, 250), WIDTH - 224, 14, 4)
+    takeaway = str(scene.get("visual", ""))
+    if not script.get("template"):
+        # Model "visual" fields are art directions; show the scene's first spoken sentence instead.
+        first = re.split(r"(?<=[.!?])\s+", str(scene.get("narration", "")).strip())[0]
+        takeaway = first if len(first) <= 120 else first[:117].rsplit(" ", 1)[0] + "..."
+    _draw_wrapped(draw, takeaway, (112, card_top + 125), _font(37, False), (228, 234, 250), WIDTH - 224, 14, 4)
 
     # Source metadata, not an assertion about unobserved video contents.
     snippet = candidate.get("snippet", {})
@@ -170,7 +175,7 @@ def _make_subtitles(scenes: list[dict[str, str]], duration: float, path: Path) -
         "",
         "[V4+ Styles]",
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
-        "Style: Default,DejaVu Sans,34,&H00FFFFFF,&H0000FFFF,&H00101522,&H90060917,-1,0,0,0,100,100,0,0,3,2,0,2,72,72,440,1",
+        "Style: Default,DejaVu Sans,58,&H00FFFFFF,&H0000FFFF,&H00101522,&H90060917,-1,0,0,0,100,100,0,0,3,4,0,2,90,90,240,1",
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",

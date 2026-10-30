@@ -15,12 +15,35 @@ from . import youtube
 from .config import Settings
 from .quota import QuotaLedger
 from .renderer import render_short
-from .scriptwriter import ScriptGenerationError, generate_script
+from .scriptwriter import ScriptGenerationError, generate_script, template_script
 from .state import load_state, save_state
 from .youtube import fetch_candidates
 
 LOG = logging.getLogger("trendforge.original")
 MAX_SECONDS = 59.0
+
+
+def _polish(script: dict, cand: dict) -> None:
+    """Enforce title < 60 chars on a word boundary, a real description, and >=3 hashtags."""
+    title = " ".join(str(script.get("title", "")).split())
+    if len(title) >= 60:
+        title = title[:59].rsplit(" ", 1)[0].rstrip(" ,.:;-")
+    script["title"] = title
+    base = template_script(cand)
+    tags = list(dict.fromkeys((script.get("hashtags") or []) + base["hashtags"]))[:4]
+    script["hashtags"] = tags
+    desc = str(script.get("description", "")).strip()
+    body = desc.split("Source video and public metadata:")[0].strip()
+    if len(body) < 40:
+        script["description"] = base["description"]
+    else:
+        snippet = cand.get("snippet", {})
+        script["description"] = (
+            f"{body}\n\nWatch the original video by {snippet.get('channelTitle', 'the creator')}: "
+            f"https://www.youtube.com/watch?v={cand.get('id')}\n"
+            "Original commentary with custom motion graphics; no footage from the original is used.\n\n"
+            + " ".join(tags)
+        )[:4800]
 
 
 def main() -> int:
@@ -45,8 +68,9 @@ def main() -> int:
         try:
             script = generate_script(settings, cand)
         except ScriptGenerationError as exc:
-            LOG.warning("Script failed for %s: %s", vid, exc)
-            continue
+            LOG.warning("Groq script failed for %s (%s); using template script.", vid, exc)
+            script = template_script(cand)
+        _polish(script, cand)
         result = render_short(settings, cand, script)
         if result["duration_seconds"] > MAX_SECONDS:
             LOG.warning("Render %.1fs too long for %s; skipping", result["duration_seconds"], vid)
@@ -55,7 +79,7 @@ def main() -> int:
         out.mkdir(parents=True, exist_ok=True)
         final = out / "short.mp4"
         os.replace(result["path"], final)
-        title = script["title"] if len(script["title"]) < 60 else script["title"][:59]
+        title = script["title"]
         meta = {
             "source": script["source"],
             "clips": [{
