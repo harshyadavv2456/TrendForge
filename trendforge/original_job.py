@@ -28,12 +28,18 @@ def _polish(script: dict, cand: dict) -> None:
     title = " ".join(str(script.get("title", "")).split())
     if len(title) >= 60:
         title = title[:59].rsplit(" ", 1)[0].rstrip(" ,.:;-")
+    if title.count("(") > title.count(")"):
+        title = title[: title.rfind("(")].rstrip(" ,.:;-")
     script["title"] = title
     base = template_script(cand)
     tags = list(dict.fromkeys((script.get("hashtags") or []) + base["hashtags"]))[:4]
     script["hashtags"] = tags
     desc = str(script.get("description", "")).strip()
-    body = desc.split("Source video and public metadata:")[0].strip()
+    body = desc.split("Source video and public metadata:")[0]
+    body = "\n".join(
+        ln for ln in body.splitlines()
+        if not ln.strip().startswith(("#", "Original commentary and custom motion graphics"))
+    ).strip()
     if len(body) < 40:
         script["description"] = base["description"]
     else:
