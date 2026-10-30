@@ -15,7 +15,7 @@ TIMEOUT = 25
 LOG = logging.getLogger("trendforge.youtube")
 
 MUSIC_CATEGORY_ID = "10"  # YouTube category ID for Music
-LONG_FORM_MIN_SECONDS = 600  # 10 minutes minimum for series-worthy long-form
+LONG_FORM_MIN_SECONDS = int(__import__("os").getenv("MIN_SOURCE_SECONDS", "600"))  # skip Shorts/short sources
 
 
 def _parse_duration_seconds(duration_str: str) -> int:

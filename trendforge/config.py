@@ -102,8 +102,6 @@ class Settings:
         missing = []
         if not self.youtube_api_key:
             missing.append("YOUTUBE_API_KEY")
-        if not self.groq_api_key:
-            missing.append("GROQ_API_KEY")
         if self.auto_publish:
             for name, value in (
                 ("YOUTUBE_CLIENT_ID", self.youtube_client_id),

@@ -37,9 +37,99 @@ def _word_count(value: str) -> int:
     return len(re.findall(r"\b[\w’'-]+\b", value))
 
 
+def _fmt_count(value: Any) -> str:
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return ""
+    for div, suf in ((1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K")):
+        if n >= div:
+            return f"{n / div:.1f}".rstrip("0").rstrip(".") + suf
+    return str(n)
+
+
+def template_script(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic, metadata-only script used when GROQ_API_KEY is missing.
+
+    It only states facts available from the public API (title, channel, views,
+    publish date) and general creator-strategy observations; it never claims to
+    describe what happens inside the video.
+    """
+    source = candidate_summary(candidate)
+    snippet = candidate.get("snippet", {})
+    title_src = re.sub(r"\s+", " ", str(snippet.get("title", "this video"))).strip()
+    creator = str(snippet.get("channelTitle", "this creator")).strip() or "this creator"
+    views = _fmt_count((candidate.get("statistics") or {}).get("viewCount"))
+    short_title = title_src if len(title_src) <= 60 else title_src[:57].rsplit(" ", 1)[0] + "..."
+    view_line = f"It has already pulled in {views} views." if views else "It is climbing the charts right now."
+    scenes = [
+        {
+            "headline": f"Why {creator[:28]} Is Trending",
+            "narration": (
+                f"{creator} just landed on YouTube's trending list with {short_title}. {view_line} "
+                "Here is why videos like this take off, in under a minute."
+            ),
+            "visual": f"Trending now: {short_title}",
+        },
+        {
+            "headline": "The Title Makes A Promise",
+            "narration": (
+                "Look at the title first. It sets up one clear question and makes you want the answer. "
+                "Big channels test titles hard, because the click decides everything."
+            ),
+            "visual": "One clear promise beats a vague, clever title.",
+        },
+        {
+            "headline": "Timing Beats Luck",
+            "narration": (
+                "Next is timing. Trending uploads usually ride a moment people already care about, "
+                "so the audience is warm before the video even starts."
+            ),
+            "visual": "Ride a moment the audience already cares about.",
+        },
+        {
+            "headline": "Steal The Structure",
+            "narration": (
+                "The lesson for your own channel: one promise, a fast payoff, and a reason to share. "
+                "Follow for a new trend breakdown every day. The original video is linked below."
+            ),
+            "visual": "Promise. Payoff. Shareable moment.",
+        },
+    ]
+    narration = " ".join(sc["narration"] for sc in scenes)
+    hook_title = f"Why {creator} is trending right now"
+    if len(hook_title) > 59:
+        hook_title = "Why this video is trending right now"
+    hashtags = ["#Shorts", "#YouTubeTrending", "#CreatorTips"]
+    creator_tag = re.sub(r"[^A-Za-z0-9]", "", creator)[:30]
+    if len(creator_tag) >= 2:
+        hashtags.insert(1, f"#{creator_tag}")
+    description = (
+        f"Why \"{title_src}\" by {creator} is trending, and what creators can learn from it.\n\n"
+        f"Watch the original video: {source['url']}\n"
+        f"All credit for the original video goes to {creator}. This Short is original commentary "
+        "with custom motion graphics; no footage from the original is used.\n\n"
+        + " ".join(hashtags[:4])
+    )
+    return {
+        "title": hook_title[:59],
+        "angle": "trend breakdown",
+        "quality_score": 80,
+        "narration_disclosure": "Narration synthesized locally.",
+        "narration": narration,
+        "scenes": scenes,
+        "tags": ["shorts", "youtube trending", "creator tips", creator[:40], "trend breakdown"],
+        "hashtags": hashtags[:5],
+        "description": description[:4800],
+        "source": source,
+        "word_count": _word_count(narration),
+        "template": True,
+    }
+
+
 def generate_script(settings: Settings, candidate: dict[str, Any]) -> dict[str, Any]:
     if not settings.groq_api_key:
-        raise ScriptGenerationError("GROQ_API_KEY is required to generate original scripts.")
+        return template_script(candidate)
     full_source = candidate_summary(candidate)
     # Keep the model prompt to the minimum facts needed for an original angle; raw counts
     # and creator descriptions are not sent to the external generation provider.

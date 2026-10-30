@@ -21,17 +21,21 @@ def test_defaults_parse_regions_creator_handles_and_queries(monkeypatch) -> None
     assert settings.tts_voice == "en_US-lessac-medium"
 
 
-def test_free_provider_configuration_requires_groq_and_youtube_keys(monkeypatch) -> None:
+def test_groq_key_is_optional(monkeypatch) -> None:
     monkeypatch.setenv("YOUTUBE_API_KEY", "test-youtube-key")
     monkeypatch.setenv("GROQ_API_KEY", "")
     monkeypatch.setenv("AUTO_PUBLISH", "false")
-    settings = Settings.from_env()
-    try:
-        settings.validate_for_run()
-    except RuntimeError as exc:
-        assert "GROQ_API_KEY" in str(exc)
-    else:
-        raise AssertionError("Missing Groq key should fail preflight")
+    Settings.from_env().validate_for_run()  # template script is used instead
+
+
+def test_template_script_without_groq(monkeypatch) -> None:
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    from trendforge.scriptwriter import generate_script
+    cand = {"id": "x1", "snippet": {"title": "A Very Long Trending Video Title That Goes On And On Forever", "channelTitle": "Airrack"},
+            "statistics": {"viewCount": "1234567"}}
+    s = generate_script(Settings.from_env(), cand)
+    assert len(s["title"]) < 60 and "#Shorts" in s["description"] and "watch?v=x1" in s["description"]
+    assert 4 <= len(s["scenes"]) <= 5 and s["word_count"] < 140
 
 
 def test_handles_strip_at_prefix(monkeypatch) -> None:

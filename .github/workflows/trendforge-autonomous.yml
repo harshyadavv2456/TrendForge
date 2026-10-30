@@ -1,7 +1,8 @@
-name: TrendForge Clip Builder (no upload)
+name: TrendForge Original Shorts Builder (no upload)
 
-# Compute only: discovery (~10-20 quota units) + clipping, every 2 hours.
-# Finished clips are queued as a GitHub prerelease "clips-<source_id>".
+# Compute only: discovery (~10-20 quota units) + original motion-graphics Short with local TTS, every 2 hours.
+# No YouTube downloads.
+# Each Short is queued as a GitHub prerelease "clips-<source_id>" (short.mp4 + metadata.json).
 # Assets: part-NN.mp4 + manifest.json + metadata.json. This workflow never uploads to YouTube.
 on:
   schedule:
@@ -37,13 +38,13 @@ jobs:
           echo "Unpublished series queued: $n"
 
       - uses: actions/setup-python@v5
-        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
         with:
           python-version: "3.11"
           cache: pip
 
       - name: Restore discovery state (uploads-playlist cache, cursors)
-        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
         uses: actions/cache/restore@v4
         with:
           path: |
@@ -52,32 +53,36 @@ jobs:
           key: trendforge-state-${{ github.run_id }}
           restore-keys: trendforge-state-
 
+      - name: Cache Piper voice
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/piper
+          key: piper-voice-en_US-lessac-medium
+
       - name: Install dependencies
-        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core
-          pip install -r requirements-clipper.txt "yt-dlp[default]" --pre -U bgutil-ytdlp-pot-provider
-          # PO-token provider (helps yt-dlp on datacenter IPs); best-effort.
-          docker run -d --name bgutil -p 4416:4416 brainicism/bgutil-ytdlp-pot-provider || true
-          sleep 5
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+          pip install -r requirements.txt
 
-      - name: Discover, clip, and queue as prerelease
-        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+      - name: Build original Short and queue as prerelease
+        if: steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          QUEUE_MAX_SERIES: ${{ vars.QUEUE_MAX_SERIES || '1' }}
-          SERIES_PARTS: ${{ vars.SERIES_PARTS || '5' }}
-          PART_SECONDS: ${{ vars.PART_SECONDS || '55' }}
+          AUTO_PUBLISH: "false"
+          MIN_SOURCE_SECONDS: "60"
+          QUEUE_MAX_SERIES: ${{ vars.QUEUE_MAX_SERIES || '3' }}
           YOUTUBE_REGIONS: ${{ vars.YOUTUBE_REGIONS || 'US|GB|CA|AU' }}
-          YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|RyanTrahan|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
-        run: bash scripts/ci_build.sh
+          YOUTUBE_CREATOR_HANDLES: ${{ vars.YOUTUBE_CREATOR_HANDLES || 'MrBeast|MarkRober|Sidemen|Airrack|Mrwhosetheboss|MKBHD' }}
+        run: bash scripts/ci_original.sh
 
       - name: Save discovery state
-        if: always() && steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 1)
+        if: always() && steps.queue.outputs.pending < (vars.QUEUE_MAX_SERIES || 3)
         uses: actions/cache/save@v4
         with:
           path: |
